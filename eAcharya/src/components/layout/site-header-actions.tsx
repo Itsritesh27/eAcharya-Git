@@ -23,7 +23,7 @@ export function SiteHeaderActions() {
     // A signed-out visitor has no SSR auth cookie; do not download the browser
     // auth client just to display the same public Sign In / Get Started links.
     const hasAuthCookie = document.cookie.split(";").some((cookie) => {
-      const name = cookie.trim().split("=", 1)[0];
+      const name = cookie.trim().split("=", 1)[0] ?? "";
       return /^sb-.+-auth-token(?:\.\d+)?$/.test(name) || name === "supabase-auth-token";
     });
     if (!hasAuthCookie) {
