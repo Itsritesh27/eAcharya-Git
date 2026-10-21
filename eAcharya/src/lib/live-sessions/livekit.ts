@@ -1,4 +1,4 @@
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, WebhookReceiver } from "livekit-server-sdk";
 import type { JoinRole } from "./rules";
 
 /** Server-only LiveKit settings. The API secret never reaches the browser. */
@@ -47,4 +47,11 @@ export async function closeRoom(room: string): Promise<void> {
   } catch (e) {
     console.error("[live] closeRoom failed", (e as Error)?.message);
   }
+}
+
+/** Verifies LiveKit webhook signatures. Returns null when LiveKit is not configured. */
+export function createWebhookReceiver(): WebhookReceiver | null {
+  const env = getLiveKitEnv();
+  if (!env) return null;
+  return new WebhookReceiver(env.apiKey, env.apiSecret);
 }
