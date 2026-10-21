@@ -32,7 +32,7 @@ export function LearningComponents() {
             One platform, four ways to learn
           </h2>
           <p className="mt-3 text-forest-600">
-            eAcharya is built for Geography learners and teachers in Classes 9–12. These four learning
+            eAcharya is built for Geography and Economics learners and teachers in Classes 9–12. These four learning
             components are planned for the platform and will arrive in upcoming phases.
           </p>
         </div>

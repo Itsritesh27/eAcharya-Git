@@ -1,13 +1,10 @@
 import Link from "next/link";
 import { Logo } from "./logo";
-import { MobileMenu } from "./mobile-menu";
 import { PUBLIC_NAV } from "./nav-links";
-import { ButtonLink } from "@/components/ui/button";
-import { isSignedIn } from "@/lib/auth/session";
+import { SiteHeaderActions } from "./site-header-actions";
 
-export async function SiteHeader() {
-  const signedIn = await isSignedIn();
-
+/** Public navigation stays server-rendered; only the auth-dependent CTA is client-side. */
+export function SiteHeader() {
   return (
     <header className="relative z-30 border-b border-sage-200/70 bg-sand-50/90 backdrop-blur">
       <div className="container-page flex h-16 items-center justify-between gap-4">
@@ -25,24 +22,7 @@ export async function SiteHeader() {
           ))}
         </nav>
 
-        <div className="hidden items-center gap-2 md:flex">
-          {signedIn ? (
-            <ButtonLink href="/dashboard" size="sm">
-              Dashboard
-            </ButtonLink>
-          ) : (
-            <>
-              <ButtonLink href="/sign-in" variant="ghost" size="sm">
-                Sign In
-              </ButtonLink>
-              <ButtonLink href="/sign-up" size="sm">
-                Get Started
-              </ButtonLink>
-            </>
-          )}
-        </div>
-
-        <MobileMenu signedIn={signedIn} />
+        <SiteHeaderActions />
       </div>
     </header>
   );

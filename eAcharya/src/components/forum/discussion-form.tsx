@@ -7,7 +7,8 @@ import { Alert } from "@/components/ui/alert";
 import { FieldError, Input, Label } from "@/components/ui/input";
 import { Hint, Select, Textarea } from "@/components/assessments/form-controls";
 import { createDiscussionAction, updateDiscussionAction } from "@/lib/forum/actions";
-import { FORUM_CATEGORIES, FORUM_GRADES } from "@/lib/forum/categories";
+import { AttachmentUploader } from "./attachment-uploader";
+import { FORUM_GRADES } from "@/lib/forum/categories";
 import {
   BODY_MAX, MAX_LINKS, TITLE_MAX, createDiscussionSchema, fieldErrorsFrom, splitLinkLines, updateDiscussionSchema,
 } from "@/lib/forum/validation";
@@ -16,7 +17,7 @@ type Props =
   | { mode: "create" }
   | { mode: "edit"; discussion: { id: string; title: string; body: string; links: string[] }; onDone: () => void };
 
-const FIELD_ORDER = ["title", "grade", "category", "body", "links"];
+const FIELD_ORDER = ["title", "grade", "body", "links"];
 
 export function DiscussionForm(props: Props) {
   const router = useRouter();
@@ -26,7 +27,6 @@ export function DiscussionForm(props: Props) {
   const [title, setTitle] = useState(d?.title ?? "");
   const [body, setBody] = useState(d?.body ?? "");
   const [grade, setGrade] = useState("");
-  const [category, setCategory] = useState("");
   const [linksText, setLinksText] = useState(d?.links.join("\n") ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function DiscussionForm(props: Props) {
     const links = splitLinkLines(linksText);
     const input = editing
       ? { id: d!.id, title, body, links }
-      : { title, body, grade: grade === "" ? undefined : Number(grade), category: category || undefined, links, clientToken };
+      : { title, body, grade: grade === "" ? undefined : Number(grade), category: "general", links, clientToken };
     const check = editing ? updateDiscussionSchema.safeParse(input) : createDiscussionSchema.safeParse(input);
     if (!check.success) {
       const errs = fieldErrorsFrom(check.error);
@@ -125,14 +125,6 @@ export function DiscussionForm(props: Props) {
             </Select>
             <FieldError id="forum-grade-error" message={err("grade")} />
           </div>
-          <div>
-            <Label htmlFor="forum-category">Topic category</Label>
-            <Select id="forum-category" value={category} onChange={(e) => setCategory(e.target.value)} disabled={busy} {...aria("category")}>
-              <option value="">Choose a category</option>
-              {FORUM_CATEGORIES.map((c) => <option key={c.slug} value={c.slug}>{c.label}</option>)}
-            </Select>
-            <FieldError id="forum-category-error" message={err("category")} />
-          </div>
         </div>
       )}
 
@@ -145,10 +137,15 @@ export function DiscussionForm(props: Props) {
       </div>
 
       <div>
-        <Label htmlFor="forum-links">Supporting links (optional)</Label>
+        <Label>Attach images or PDFs (optional)</Label>
+        <AttachmentUploader disabled={busy} onUploaded={(urls) => setLinksText((old) => [old.trim(), ...urls].filter(Boolean).join("\n"))} />
+      </div>
+
+      <div>
+        <Label htmlFor="forum-links">Supporting links / uploaded files (optional)</Label>
         <Textarea id="forum-links" rows={3} value={linksText} onChange={(e) => setLinksText(e.target.value)} disabled={busy}
           placeholder="https://example.org/article" {...aria("links", "forum-links-hint")} />
-        <Hint id="forum-links-hint">Up to {MAX_LINKS} links, one per line. Only https:// links are accepted.</Hint>
+        <Hint id="forum-links-hint">Up to {MAX_LINKS} links, one per line. Uploaded file links are added here automatically.</Hint>
         <FieldError id="forum-links-error" message={err("links")} />
       </div>
 

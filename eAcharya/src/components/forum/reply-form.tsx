@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { FieldError, Label } from "@/components/ui/input";
 import { Hint, Textarea } from "@/components/assessments/form-controls";
 import { createReplyAction } from "@/lib/forum/actions";
+import { AttachmentUploader } from "./attachment-uploader";
 import { REPLY_MAX, createReplySchema, fieldErrorsFrom } from "@/lib/forum/validation";
 
 export function ReplyForm({ discussionId }: { discussionId: string }) {
@@ -60,6 +61,10 @@ export function ReplyForm({ discussionId }: { discussionId: string }) {
     <form onSubmit={submit} noValidate className="space-y-3" aria-busy={saving}>
       {error && <Alert tone="error">{error}</Alert>}
       {posted && !error && <Alert tone="success">Your reply was posted.</Alert>}
+      <div>
+        <Label>Attach images or PDFs (optional)</Label>
+        <AttachmentUploader disabled={saving} onUploaded={(urls) => setBody((old) => [old.trim(), ...urls].filter(Boolean).join("\n"))} />
+      </div>
       <div>
         <Label htmlFor="forum-reply">Write a reply</Label>
         <Textarea id="forum-reply" rows={5} value={body} onChange={(e) => setBody(e.target.value)} disabled={saving}

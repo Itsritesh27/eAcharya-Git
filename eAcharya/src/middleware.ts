@@ -7,7 +7,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip static assets and image optimisation files.
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Skip Next.js output and public static assets. These files do not need
+    // Supabase session refresh; API and page routes remain matched.
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|woff2?|ttf|otf|eot|css|js|mjs|map|geojson|xml|txt)$).*)",
   ],
 };

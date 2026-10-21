@@ -6,7 +6,6 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { SectionHeading } from "@/components/dashboard/welcome";
 import { VideoAdder } from "@/components/teacher-videos/video-adder";
 import { VideoList } from "@/components/teacher-videos/video-list";
-import { Alert } from "@/components/ui/alert";
 import { Card, CardBody } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth/session";
 import { getChapterDetail } from "@/lib/teacher-videos/data";
@@ -22,8 +21,9 @@ export default async function ChapterVideosPage({ params }: { params: Promise<{ 
   const chapter = await getChapterDetail(unitId, session.userId);
   if (!chapter) notFound();
 
-  // Teachers can add videos to their own courses whether draft or published.
-  const locked = false;
+  // Published courses allow adding new published lessons, but existing lesson edits/deletes stay locked.
+  const existingLessonsLocked = chapter.courseStatus === "published";
+  const playableCount = chapter.videos.filter((v) => v.key !== null).length;
   const existingKeys = chapter.videos.flatMap((v) => (v.key ? [v.key] : []));
 
   return (
@@ -34,26 +34,17 @@ export default async function ChapterVideosPage({ params }: { params: Promise<{ 
       <h1 className="mb-1 mt-3 text-2xl font-extrabold sm:text-3xl">{chapter.title}</h1>
       <p className="mb-6 text-sm text-forest-600">{chapter.courseTitle}</p>
 
-      {locked ? (
-        <div className="mb-6 max-w-3xl">
-          <Alert tone="error">
-            This course is published, so its lessons are locked and videos cannot be added here. Ask an
-            administrator to unpublish it first.
-          </Alert>
-        </div>
-      ) : (
-        <Card className="mb-8 max-w-3xl">
-          <CardBody>
-            <VideoAdder unitId={chapter.unitId} existingKeys={existingKeys} />
-          </CardBody>
-        </Card>
-      )}
+      <Card className="mb-8 max-w-3xl">
+        <CardBody>
+          <VideoAdder unitId={chapter.unitId} existingKeys={existingKeys} publishedCourse={chapter.courseStatus === "published"} />
+        </CardBody>
+      </Card>
 
       <section aria-labelledby="in-chapter" className="max-w-3xl">
         <SectionHeading>
-          <span id="in-chapter">Videos in this chapter ({chapter.videos.length})</span>
+          <span id="in-chapter">Videos in this chapter ({playableCount})</span>
         </SectionHeading>
-        <VideoList unitId={chapter.unitId} videos={chapter.videos} locked={locked} />
+        <VideoList unitId={chapter.unitId} videos={chapter.videos} locked={existingLessonsLocked} />
       </section>
     </DashboardShell>
   );

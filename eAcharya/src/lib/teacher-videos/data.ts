@@ -23,7 +23,7 @@ export async function getTeacherChapters(userId: string): Promise<CourseChapters
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("courses")
-    .select("id, title, status, units(id, title, position, lessons(id))")
+    .select("id, title, status, units(id, title, position, lessons(id, content:lesson_content(video_url)) )")
     .eq("created_by", userId)
     .order("title");
   if (error) throw new Error("Could not load your courses.");
@@ -36,11 +36,14 @@ export async function getTeacherChapters(userId: string): Promise<CourseChapters
       courseId: c.id as string,
       title: c.title as string,
       status: c.status as "draft" | "published",
-      chapters: units.map((u) => ({
-        unitId: u.id as string,
-        title: u.title as string,
-        videoCount: ((u.lessons ?? []) as unknown[]).length,
-      })),
+      chapters: units.map((u) => {
+        const lessons = (u.lessons ?? []) as Obj[];
+        const videoCount = lessons.filter((lesson) => {
+          const content = Array.isArray(lesson.content) ? (lesson.content[0] as Obj | undefined) : (lesson.content as Obj | null);
+          return typeof content?.video_url === "string" && parseVideoUrl(content.video_url) !== null;
+        }).length;
+        return { unitId: u.id as string, title: u.title as string, videoCount };
+      }),
     };
   });
 }

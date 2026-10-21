@@ -236,37 +236,47 @@ export async function getLessonPageData(lessonId: string, userId: string): Promi
   if (!l.unit || !l.unit.course) return null;
   const course = l.unit.course;
 
-  const [{ data: units }, enrolledIds, completedIds, { data: content }, { data: prog }, { data: note }, { data: bm }, { data: res }] =
-    await Promise.all([
-      supabase
-        .from("units")
-        .select("id, title, position, lessons(id, title, position, is_published)")
-        .eq("course_id", course.id)
-        .order("position"),
-      getEnrolledCourseIds(userId),
-      getCompletedLessonIds(userId),
-      supabase
-        .from("lesson_content")
-        .select("lesson_id, video_url, video_sources, allow_download, objectives, transcript, duration_minutes")
-        .eq("lesson_id", lessonId)
-        .maybeSingle(),
-      supabase
-        .from("lesson_progress")
-        .select("status, position_seconds")
-        .eq("user_id", userId)
-        .eq("lesson_id", lessonId)
-        .maybeSingle(),
-      supabase.from("lesson_notes").select("body").eq("user_id", userId).eq("lesson_id", lessonId).maybeSingle(),
-      supabase.from("bookmarks").select("id").eq("user_id", userId).eq("lesson_id", lessonId).maybeSingle(),
-      supabase
-        .from("resources")
-        .select(RESOURCE_COLUMNS)
-        .eq("is_published", true)
-        .eq("course_id", course.id)
-        .or(`lesson_id.eq.${lessonId},unit_id.eq.${l.unit_id},and(lesson_id.is.null,unit_id.is.null)`)
-        .order("created_at", { ascending: false })
-        .limit(12),
-    ]);
+  const [
+    { data: units },
+    { data: enrollmentRows },
+    completedIds,
+    { data: content },
+    { data: prog },
+    { data: note },
+    { data: bm },
+    { data: res },
+  ] = await Promise.all([
+    supabase
+      .from("units")
+      .select("id, title, position, lessons(id, title, position, is_published)")
+      .eq("course_id", course.id)
+      .order("position"),
+    // Only this course's enrollment is needed on a lesson page; do not fetch
+    // every course ID the student has enrolled in.
+    supabase.from("enrollments").select("course_id").eq("user_id", userId).eq("course_id", course.id).limit(1),
+    getCompletedLessonIds(userId),
+    supabase
+      .from("lesson_content")
+      .select("lesson_id, video_url, video_sources, allow_download, objectives, transcript, duration_minutes")
+      .eq("lesson_id", lessonId)
+      .maybeSingle(),
+    supabase
+      .from("lesson_progress")
+      .select("status, position_seconds")
+      .eq("user_id", userId)
+      .eq("lesson_id", lessonId)
+      .maybeSingle(),
+    supabase.from("lesson_notes").select("body").eq("user_id", userId).eq("lesson_id", lessonId).maybeSingle(),
+    supabase.from("bookmarks").select("id").eq("user_id", userId).eq("lesson_id", lessonId).maybeSingle(),
+    supabase
+      .from("resources")
+      .select(RESOURCE_COLUMNS)
+      .eq("is_published", true)
+      .eq("course_id", course.id)
+      .or(`lesson_id.eq.${lessonId},unit_id.eq.${l.unit_id},and(lesson_id.is.null,unit_id.is.null)`)
+      .order("created_at", { ascending: false })
+      .limit(12),
+  ]);
 
   const outline = ((units ?? []) as unknown as {
     id: string;
@@ -297,7 +307,7 @@ export async function getLessonPageData(lessonId: string, userId: string): Promi
       : null,
     note: (note as { body: string } | null)?.body ?? "",
     bookmarked: Boolean(bm),
-    enrolled: enrolledIds.has(course.id),
+    enrolled: Boolean(enrollmentRows?.length),
     resources: (res ?? []) as unknown as ResourceRow[],
     completedIds,
   };

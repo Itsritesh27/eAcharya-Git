@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { isRole, redirectTargetFor } from "@/lib/auth/roles";
@@ -11,12 +12,29 @@ export interface SessionProfile {
 }
 
 /**
+ * A missing SSR auth cookie means there is no Supabase session for the server
+ * client to validate. Short-circuit anonymous reads while still validating any
+ * session that is present. If cookie inspection is unavailable, fall back to
+ * normal server validation rather than assuming the visitor is anonymous.
+ */
+async function hasSupabaseAuthCookie(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    return cookieStore.getAll().some(({ name }) =>
+      /^sb-.+-auth-token(?:\.\d+)?$/.test(name) || name === "supabase-auth-token",
+    );
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Returns the signed-in user's profile, or null when signed out / unconfigured.
  * Uses auth.getUser() (server-validated), never trusting cookies alone.
  * The role always comes from the database, never from the request.
  */
 export async function getSessionProfile(): Promise<SessionProfile | null> {
-  if (!isSupabaseConfigured()) return null;
+  if (!isSupabaseConfigured() || !(await hasSupabaseAuthCookie())) return null;
 
   const supabase = await createClient();
   const {
@@ -41,7 +59,7 @@ export async function getSessionProfile(): Promise<SessionProfile | null> {
 
 /** Signed-in user's id and role for public pages. Never redirects; null if unavailable. */
 export async function getViewer(): Promise<{ userId: string; role: Role } | null> {
-  if (!isSupabaseConfigured()) return null;
+  if (!isSupabaseConfigured() || !(await hasSupabaseAuthCookie())) return null;
   try {
     const supabase = await createClient();
     const {
@@ -65,7 +83,7 @@ export async function requireSession(nextPath: string): Promise<SessionProfile> 
 
 /** Lightweight check for public pages (header state). Never redirects. */
 export async function isSignedIn(): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
+  if (!isSupabaseConfigured() || !(await hasSupabaseAuthCookie())) return false;
   try {
     const supabase = await createClient();
     const {

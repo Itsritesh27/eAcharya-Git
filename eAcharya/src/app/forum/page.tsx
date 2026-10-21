@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import {
-  BookmarksLink, CategoryFilter, ClassFilter, ClearFilters, ForumSearch, NewDiscussionButton, RecentDiscussions, SortControl,
+  BookmarksLink, ClassFilter, ClearFilters, ForumSearch, NewDiscussionButton, RecentDiscussions, SortControl,
 } from "@/components/forum/forum-sections";
 import { requireSession } from "@/lib/auth/session";
 import { cleanQuery, parseForumCategory, parseForumGrade, parseForumSort, parsePage } from "@/lib/forum/categories";
@@ -38,7 +38,7 @@ export default async function ForumPage({ searchParams }: { searchParams: Promis
         <div>
           <h1 className="text-2xl font-extrabold sm:text-3xl">Discussion Forum</h1>
           <p className="mt-1 max-w-2xl text-forest-600">
-            Ask questions, share ideas and help each other with Geography in Classes 9 to 12. Students and teachers learn together here.
+            Ask questions, share ideas and help each other with Geography and Economics in Classes 9 to 12. Students and teachers learn together here.
           </p>
         </div>
         <div className="flex flex-wrap gap-2"><BookmarksLink /><NewDiscussionButton /></div>
@@ -47,7 +47,6 @@ export default async function ForumPage({ searchParams }: { searchParams: Promis
       <ClassFilter filters={filters} />
       <SortControl filters={filters} />
       <ClearFilters filters={filters} />
-      <CategoryFilter filters={filters} />
       <RecentDiscussions filters={filters} result={result} authors={authors} />
     </DashboardShell>
   );

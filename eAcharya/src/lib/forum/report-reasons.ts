@@ -3,7 +3,7 @@ export const REPORT_REASONS = [
   { value: "spam", label: "Spam or advertising", hint: "Unwanted promotion, repeated posts or junk links." },
   { value: "abusive", label: "Abusive or harassing", hint: "Insults, bullying or threats towards someone." },
   { value: "inappropriate", label: "Inappropriate content", hint: "Not suitable for a school learning community." },
-  { value: "off_topic", label: "Off topic", hint: "Not about Geography or learning." },
+  { value: "off_topic", label: "Off topic", hint: "Not about Geography, Economics or learning." },
   { value: "misinformation", label: "Incorrect or misleading", hint: "Facts that are wrong in a way that could confuse learners." },
   { value: "other", label: "Something else", hint: "Please explain in the details box." },
 ] as const;

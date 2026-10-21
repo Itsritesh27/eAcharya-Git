@@ -58,7 +58,7 @@ export function CreateCourseForm({ classes, subjects }: { classes: Option[]; sub
       )}
       <div>
         <Label htmlFor="title">Course title</Label>
-        <Input id="title" name="title" required minLength={3} maxLength={120} placeholder="e.g. Class 11 Fundamentals of Physical Geography" />
+        <Input id="title" name="title" required minLength={3} maxLength={120} placeholder="e.g. Class 11 Indian Economic Development" />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>

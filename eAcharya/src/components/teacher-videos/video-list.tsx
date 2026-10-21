@@ -130,7 +130,7 @@ export function VideoList({
                 <p className="truncate font-medium">{v.title}</p>
               )}
               <p className="text-xs text-forest-600">
-                {v.videoUrl ? (v.youtubeId ? "YouTube" : "Video file") : "No video link"} ·{" "}
+                {v.videoUrl ? (v.key ? (v.youtubeId ? "YouTube" : "Video file") : "Unsupported video link") : "Missing video content"} ·{" "}
                 {v.isPublished ? "Visible to students" : "Hidden"}
               </p>
             </div>

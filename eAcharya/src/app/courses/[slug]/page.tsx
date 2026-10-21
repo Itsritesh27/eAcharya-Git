@@ -87,7 +87,7 @@ export default async function CourseDetailPage({ params }: { params: Params }) {
             <div className="p-5 sm:p-6">
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-pill bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-800">{course.class?.name}</span>
-                <span className="rounded-pill bg-sage-100 px-2.5 py-0.5 text-xs font-medium text-forest-700">{course.subject?.name ?? "Geography"}</span>
+                <span className="rounded-pill bg-sage-100 px-2.5 py-0.5 text-xs font-medium text-forest-700">{course.subject?.name ?? "Course"}</span>
               </div>
               <h1 className="mt-2 text-2xl font-extrabold sm:text-3xl">{course.title}</h1>
               <p className="mt-2 text-sm text-forest-600">{course.description}</p>

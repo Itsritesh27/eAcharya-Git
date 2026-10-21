@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bookmark, MessageCircle, MessagesSquare, Plus, Search, Tag, X } from "lucide-react";
+import { Bookmark, MessageCircle, MessagesSquare, Plus, Search, X } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -10,7 +10,7 @@ import { AuthorLine } from "./author-line";
 import { DiscussionBookmarkButton } from "./discussion-bookmark-button";
 import { LikeButton } from "./like-button";
 import {
-  FORUM_CATEGORIES, FORUM_GRADES, FORUM_SORTS, MAX_QUERY_LENGTH, bookmarksHref, categoryLabel, forumHref,
+  FORUM_GRADES, FORUM_SORTS, MAX_QUERY_LENGTH, bookmarksHref, categoryLabel, forumHref,
   type ForumCategorySlug, type ForumGrade, type ForumSort,
 } from "@/lib/forum/categories";
 
@@ -58,35 +58,6 @@ export function ClassFilter({ filters }: { filters: ForumFilters }) {
         ))}
       </ul>
     </nav>
-  );
-}
-
-export function CategoryFilter({ filters }: { filters: ForumFilters }) {
-  return (
-    <section aria-labelledby="cat-h" className="mt-8">
-      <h2 id="cat-h" className="text-xl font-bold">Topic categories</h2>
-      <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {FORUM_CATEGORIES.map((c) => {
-          const active = filters.category === c.slug;
-          return (
-            <li key={c.slug}>
-              <Link
-                href={forumHref({ q: filters.q, grade: filters.grade, sort: filters.sort, category: active ? undefined : c.slug })}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "block h-full rounded-card border bg-white p-4 shadow-card transition hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
-                  active ? "border-brand-600 ring-1 ring-brand-600" : "border-sage-200",
-                )}
-              >
-                <span className="flex items-center gap-2 font-bold text-forest-950"><Tag className="h-4 w-4 text-brand-700" aria-hidden /> {c.label}</span>
-                <span className="mt-1 block text-sm text-forest-600">{c.blurb}</span>
-                {active && <span className="mt-2 block text-xs font-semibold text-brand-700">Selected. Select again to clear.</span>}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }
 
@@ -168,7 +139,7 @@ export function RecentDiscussions({
             description={
               filtered
                 ? "Try a different search, class or topic, or clear the filters."
-                : "Be the first to ask a Geography question. Students and teachers will be able to reply."
+                : "Be the first to ask a Geography or Economics question. Students and teachers will be able to reply."
             }
           />
         )}

@@ -11,7 +11,7 @@ const sans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: { default: "eAcharya | Learn the Earth. Understand the World.", template: "%s | eAcharya" },
   description:
-    "A modern Geography learning platform for Classes 9–12 with structured curriculum, expert content and practical learning.",
+    "A modern Geography and Economics learning platform for Classes 9–12 with structured curriculum, expert content and practical learning.",
 };
 
 export const viewport: Viewport = {

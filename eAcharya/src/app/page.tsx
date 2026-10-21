@@ -18,8 +18,8 @@ export default function HomePage() {
             className="pointer-events-none absolute inset-0 opacity-10 [background:repeating-radial-gradient(circle_at_85%_120%,transparent_0,transparent_14px,#fff_15px,transparent_16px)]"
           />
           <div className="relative">
-            <h2 className="text-xl font-extrabold text-white sm:text-2xl">Start Your Geography Learning Journey Today</h2>
-            <p className="mt-1 text-sm text-brand-100">Explore complete courses, practice assessments, interactive maps and much more.</p>
+            <h2 className="text-xl font-extrabold text-white sm:text-2xl">Start Your Geography and Economics Learning Journey Today</h2>
+            <p className="mt-1 text-sm text-brand-100">Explore complete courses, practice assessments, interactive maps, economics tools and much more.</p>
           </div>
           <ButtonLink href="/sign-up" variant="secondary" size="lg" className="relative mt-5 shrink-0 sm:mt-0">
             Get Started <ArrowRight className="h-4 w-4" aria-hidden />

@@ -5,7 +5,8 @@ import { GlobeIllustration } from "./globe-illustration";
 
 /**
  * Interactive 3D Earth (three.js). Auto-rotates, drag to spin.
- * Falls back to the SVG illustration if WebGL is unavailable.
+ * Rendering is paused off-screen and in hidden tabs. Reduced-motion users get
+ * a still globe that redraws only when they interact with it.
  */
 export function Earth3D({ className }: { className?: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -15,8 +16,20 @@ export function Earth3D({ className }: { className?: string }) {
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
+
     let disposed = false;
-    let cleanup = () => {};
+    let disposers: Array<() => void> = [];
+    const cleanupResources = () => {
+      const pending = disposers;
+      disposers = [];
+      for (const dispose of pending.reverse()) {
+        try {
+          dispose();
+        } catch {
+          // Cleanup should continue if one WebGL resource is already disposed.
+        }
+      }
+    };
 
     (async () => {
       try {
@@ -24,11 +37,14 @@ export function Earth3D({ className }: { className?: string }) {
         if (disposed) return;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        // Cap GPU work on high-DPI displays; the hero globe does not need a 2x buffer.
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         mount.appendChild(renderer.domElement);
-        renderer.domElement.style.touchAction = "pan-y";
-        renderer.domElement.style.cursor = "grab";
+        const el = renderer.domElement;
+        el.style.touchAction = "pan-y";
+        el.style.cursor = "grab";
+        disposers.push(() => renderer.dispose(), () => el.remove());
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
@@ -38,116 +54,156 @@ export function Earth3D({ className }: { className?: string }) {
         sun.position.set(-3, 2, 4);
         scene.add(sun, new THREE.AmbientLight(0x6f8fb0, 0.9));
 
-        const small = window.innerWidth < 640;
-        const tex = await new THREE.TextureLoader().loadAsync(
-          small ? "/textures/earth-2k.jpg" : "/textures/earth-4k.jpg",
-        );
-        if (disposed) return;
+        // A 2K equirectangular texture is already higher-resolution than this
+        // 460-520px display at the capped renderer DPR, on desktop and mobile.
+        const tex = await new THREE.TextureLoader().loadAsync("/textures/earth-2k.webp");
+        if (disposed) {
+          tex.dispose();
+          return;
+        }
+        disposers.push(() => tex.dispose());
         tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        tex.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 4);
 
-        const earth = new THREE.Mesh(
-          new THREE.SphereGeometry(1.5, 96, 96),
-          new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0 }),
-        );
+        const earthGeometry = new THREE.SphereGeometry(1.5, 72, 72);
+        const earthMaterial = new THREE.MeshStandardMaterial({
+          map: tex,
+          roughness: 0.85,
+          metalness: 0,
+        });
+        const earth = new THREE.Mesh(earthGeometry, earthMaterial);
         earth.rotation.z = THREE.MathUtils.degToRad(23.4); // axial tilt
         const spin = new THREE.Group();
         spin.add(earth);
         scene.add(spin);
+        disposers.push(() => earthGeometry.dispose(), () => earthMaterial.dispose());
 
         // Soft atmosphere rim
-        const atmosphere = new THREE.Mesh(
-          new THREE.SphereGeometry(1.5 * 1.045, 64, 64),
-          new THREE.ShaderMaterial({
-            transparent: true,
-            side: THREE.BackSide,
-            blending: THREE.NormalBlending,
-            depthWrite: false,
-            vertexShader:
-              "varying vec3 n; void main(){ n = normalize(normalMatrix*normal); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} ",
-            fragmentShader:
-              "varying vec3 n; void main(){ float i = pow(0.72 - dot(n, vec3(0.,0.,1.)), 3.0); gl_FragColor = vec4(0.30,0.62,0.95, clamp(i,0.0,1.0)*0.75); }",
-          }),
-        );
+        const atmosphereGeometry = new THREE.SphereGeometry(1.5 * 1.045, 48, 48);
+        const atmosphereMaterial = new THREE.ShaderMaterial({
+          transparent: true,
+          side: THREE.BackSide,
+          blending: THREE.NormalBlending,
+          depthWrite: false,
+          vertexShader:
+            "varying vec3 n; void main(){ n = normalize(normalMatrix*normal); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} ",
+          fragmentShader:
+            "varying vec3 n; void main(){ float i = pow(0.72 - dot(n, vec3(0.,0.,1.)), 3.0); gl_FragColor = vec4(0.30,0.62,0.95, clamp(i,0.0,1.0)*0.75); }",
+        });
+        const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
         scene.add(atmosphere);
+        disposers.push(() => atmosphereGeometry.dispose(), () => atmosphereMaterial.dispose());
 
         const resize = () => {
-          const w = mount.clientWidth;
-          renderer.setSize(w, w);
+          const size = Math.max(1, mount.clientWidth);
+          renderer.setSize(size, size);
+          renderer.render(scene, camera);
         };
         resize();
-        const ro = new ResizeObserver(resize);
-        ro.observe(mount);
+        const resizeObserver = new ResizeObserver(resize);
+        resizeObserver.observe(mount);
+        disposers.push(() => resizeObserver.disconnect());
 
-        // Drag to rotate
         let dragging = false;
         let lastX = 0;
         let velocity = 0;
-        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const el = renderer.domElement;
-        const down = (e: PointerEvent) => {
+        let reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        let inViewport = false;
+        let pageVisible = document.visibilityState === "visible";
+        let raf = 0;
+
+        const stopAnimation = () => {
+          if (raf) cancelAnimationFrame(raf);
+          raf = 0;
+        };
+
+        const tick = () => {
+          raf = 0;
+          if (disposed || !inViewport || !pageVisible) return;
+
+          if (!dragging && !reducedMotion) {
+            velocity *= 0.95;
+            spin.rotation.y += velocity + 0.0018;
+          }
+          renderer.render(scene, camera);
+
+          // Reduced-motion users only render in response to interaction/resize.
+          if (!reducedMotion) raf = requestAnimationFrame(tick);
+        };
+
+        const requestRender = () => {
+          if (disposed || !inViewport || !pageVisible || raf) return;
+          raf = requestAnimationFrame(tick);
+        };
+
+        const restartForCurrentState = () => {
+          stopAnimation();
+          requestRender();
+        };
+
+        const down = (event: PointerEvent) => {
           dragging = true;
-          lastX = e.clientX;
-          el.setPointerCapture(e.pointerId);
+          lastX = event.clientX;
+          el.setPointerCapture(event.pointerId);
           el.style.cursor = "grabbing";
         };
-        const move = (e: PointerEvent) => {
+        const move = (event: PointerEvent) => {
           if (!dragging) return;
-          velocity = (e.clientX - lastX) * 0.006;
+          velocity = (event.clientX - lastX) * 0.006;
           spin.rotation.y += velocity;
-          lastX = e.clientX;
+          lastX = event.clientX;
+          requestRender();
         };
         const up = () => {
           dragging = false;
           el.style.cursor = "grab";
+          requestRender();
         };
         el.addEventListener("pointerdown", down);
         el.addEventListener("pointermove", move);
         el.addEventListener("pointerup", up);
         el.addEventListener("pointercancel", up);
-
-        // Only render while visible
-        let visible = true;
-        const io = new IntersectionObserver((entries) => (visible = entries[0]?.isIntersecting ?? true));
-        io.observe(mount);
-
-        let raf = 0;
-        const tick = () => {
-          raf = requestAnimationFrame(tick);
-          if (!visible) return;
-          if (!dragging) {
-            velocity *= 0.95;
-            spin.rotation.y += velocity + (reduce ? 0 : 0.0018);
-          }
-          renderer.render(scene, camera);
-        };
-        tick();
-        setReady(true);
-
-        cleanup = () => {
-          cancelAnimationFrame(raf);
-          ro.disconnect();
-          io.disconnect();
+        disposers.push(() => {
           el.removeEventListener("pointerdown", down);
           el.removeEventListener("pointermove", move);
           el.removeEventListener("pointerup", up);
           el.removeEventListener("pointercancel", up);
-          tex.dispose();
-          earth.geometry.dispose();
-          (earth.material as import("three").Material).dispose();
-          atmosphere.geometry.dispose();
-          (atmosphere.material as import("three").Material).dispose();
-          renderer.dispose();
-          el.remove();
+        });
+
+        const intersectionObserver = new IntersectionObserver(([entry]) => {
+          inViewport = entry?.isIntersecting ?? false;
+          if (inViewport) restartForCurrentState();
+          else stopAnimation();
+        });
+        intersectionObserver.observe(mount);
+        disposers.push(() => intersectionObserver.disconnect());
+
+        const onVisibilityChange = () => {
+          pageVisible = document.visibilityState === "visible";
+          if (pageVisible) restartForCurrentState();
+          else stopAnimation();
         };
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        disposers.push(() => document.removeEventListener("visibilitychange", onVisibilityChange));
+
+        const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const onMotionChange = (event: MediaQueryListEvent) => {
+          reducedMotion = event.matches;
+          restartForCurrentState();
+        };
+        motionQuery.addEventListener("change", onMotionChange);
+        disposers.push(() => motionQuery.removeEventListener("change", onMotionChange));
+
+        setReady(true);
       } catch {
+        cleanupResources();
         if (!disposed) setFailed(true);
       }
     })();
 
     return () => {
       disposed = true;
-      cleanup();
+      cleanupResources();
     };
   }, []);
 

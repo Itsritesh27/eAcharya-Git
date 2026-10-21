@@ -18,7 +18,7 @@ export default async function NewDiscussionPage() {
       </Link>
       <h1 className="mt-3 text-2xl font-extrabold sm:text-3xl">Start a discussion</h1>
       <p className="mt-1 max-w-2xl text-forest-600">
-        Ask a clear Geography question. Choose the right class and topic so the right people see it.
+        Ask a clear Geography or Economics question. Choose the right class and topic so the right people see it.
       </p>
       <Card className="mt-6 max-w-3xl">
         <CardBody><DiscussionForm mode="create" /></CardBody>

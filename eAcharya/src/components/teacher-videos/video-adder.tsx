@@ -67,7 +67,7 @@ interface Row {
   state: "loading" | "found" | "manual";
 }
 
-export function VideoAdder({ unitId, existingKeys }: { unitId: string; existingKeys: string[] }) {
+export function VideoAdder({ unitId, existingKeys, publishedCourse = false }: { unitId: string; existingKeys: string[]; publishedCourse?: boolean }) {
   const router = useRouter();
   const [text, setText] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -311,7 +311,7 @@ export function VideoAdder({ unitId, existingKeys }: { unitId: string; existingK
     startSaving(async () => {
       const res = await addVideosAction({
         unitId,
-        publish,
+        publish: publishedCourse || publish,
         allowDownload,
         items: rows.map((r) => ({
           url: r.url,
@@ -477,11 +477,12 @@ export function VideoAdder({ unitId, existingKeys }: { unitId: string; existingK
           <label className="flex items-center gap-2 text-sm text-forest-800">
             <input
               type="checkbox"
-              checked={publish}
+              checked={publishedCourse || publish}
+              disabled={publishedCourse}
               onChange={(e) => setPublish(e.target.checked)}
               className="h-4 w-4 rounded border-sage-300 text-brand-600"
             />
-            Make these lessons visible to students (they still only appear once the course is published)
+            {publishedCourse ? "These lessons will be visible to students because the course is already published" : "Make these lessons visible to students (they still only appear once the course is published)"}
           </label>
 
           <div className="flex items-center gap-3">

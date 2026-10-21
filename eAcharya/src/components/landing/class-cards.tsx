@@ -4,10 +4,10 @@ import { LandscapeArt, type LandscapeVariant } from "./landscape-art";
 
 // Introductory labels only. Real curriculum lives in the database.
 const CLASSES: { grade: 9 | 10 | 11 | 12; subtitle: string; variant: LandscapeVariant }[] = [
-  { grade: 9, subtitle: "Contemporary India I", variant: "hills" },
-  { grade: 10, subtitle: "Contemporary India II", variant: "farmland" },
-  { grade: 11, subtitle: "Fundamentals of Physical Geography", variant: "peaks" },
-  { grade: 12, subtitle: "India: People and Economy", variant: "city" },
+  { grade: 9, subtitle: "Contemporary India I · Economics", variant: "hills" },
+  { grade: 10, subtitle: "Contemporary India II · Economic Development", variant: "farmland" },
+  { grade: 11, subtitle: "Physical Geography · Indian Economy · Statistics", variant: "peaks" },
+  { grade: 12, subtitle: "People and Economy · Micro and Macroeconomics", variant: "city" },
 ];
 
 export function ClassCards() {
@@ -16,7 +16,7 @@ export function ClassCards() {
       <h2 id="classes-heading" className="text-2xl font-extrabold sm:text-3xl">
         Choose Your Class
       </h2>
-      <p className="mt-2 text-forest-600">Explore NCERT Geography courses and start your learning journey.</p>
+      <p className="mt-2 text-forest-600">Explore NCERT Geography and Economics courses and start your learning journey.</p>
 
       <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {CLASSES.map(({ grade, subtitle, variant }) => (

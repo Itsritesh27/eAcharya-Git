@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 import {
   Award, BarChart3, Bookmark, BookOpen, ClipboardList, FilePlus2, Flag, GraduationCap, LayoutDashboard,
-  Library, Map, MessagesSquare, MonitorPlay, Settings, Shield, UserRound, Users, Video,
+  Library, Map, MessagesSquare, MonitorPlay, Settings, Shield, TrendingUp, UserRound, Users, Video,
   type LucideIcon,
 } from "lucide-react";
 import type { NavIconName, NavSection } from "./nav-config";
@@ -14,7 +14,7 @@ import type { NavIconName, NavSection } from "./nav-config";
 // functions cannot be passed from a Server Component as props.
 const ICONS: Record<NavIconName, LucideIcon> = {
   Award, BarChart3, Bookmark, BookOpen, ClipboardList, FilePlus2, Flag, GraduationCap, LayoutDashboard,
-  Library, Map, MessagesSquare, MonitorPlay, Settings, Shield, UserRound, Users, Video,
+  Library, Map, MessagesSquare, MonitorPlay, Settings, Shield, TrendingUp, UserRound, Users, Video,
 };
 
 export function SidebarNav({ sections, onNavigate }: { sections: NavSection[]; onNavigate?: () => void }) {

@@ -28,7 +28,7 @@ export function Hero() {
             <span className="text-brand-600">Understand the World.</span>
           </h1>
           <p className="mt-5 max-w-lg text-base leading-relaxed text-forest-700 sm:text-lg">
-            eAcharya is a modern Geography learning platform for Classes 9–12, aligned with NCERT. Explore
+            eAcharya is a modern Geography and Economics learning platform for Classes 9–12, aligned with NCERT. Explore
             interactive lessons, rich visual resources, practice assessments and a collaborative learning community.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -36,7 +36,10 @@ export function Hero() {
               Explore Courses
             </ButtonLink>
             <ButtonLink href="/geography-lab" variant="secondary" size="lg">
-              Explore Geography Lab
+              Geography Lab
+            </ButtonLink>
+            <ButtonLink href="/economics-lab" variant="secondary" size="lg">
+              Economics Lab
             </ButtonLink>
           </div>
         </div>

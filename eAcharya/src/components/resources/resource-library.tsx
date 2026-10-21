@@ -80,7 +80,7 @@ export async function ResourceLibrary({
   return (
     <div>
       <h1 className="text-2xl font-extrabold sm:text-3xl">e-Content Library</h1>
-      <p className="mt-1 text-forest-600">Notes, PDFs, presentations, infographics and links for your Geography courses.</p>
+      <p className="mt-1 text-forest-600">Notes, PDFs, presentations, infographics and links for your Geography and Economics courses.</p>
 
       <form method="get" action={basePath} className="mt-6 rounded-card border border-sage-200 bg-white p-4 shadow-card">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

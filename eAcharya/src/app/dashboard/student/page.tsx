@@ -59,7 +59,7 @@ export default async function StudentDashboardPage() {
   return (
     <DashboardShell session={session}>
       <h1 className="text-2xl font-extrabold sm:text-3xl">{first ? `Welcome back, ${first}!` : "Welcome back!"}</h1>
-      <p className="mt-1 text-forest-600">Continue your learning journey and explore the fascinating world of Geography.</p>
+      <p className="mt-1 text-forest-600">Continue your learning journey and explore the fascinating worlds of Geography and Economics.</p>
 
       <ul className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Your summary">
         <Stat icon={CheckCircle2} value={String(overall.completed)} label="Lessons completed" tone="bg-brand-50 text-brand-700" />
@@ -142,7 +142,7 @@ export default async function StudentDashboardPage() {
         </div>
         {enrolled.length === 0 ? (
           <>
-            <EmptyState icon={BookX} title="You haven't enrolled in any courses" description="Browse the published Geography courses and enrol to see them here." />
+            <EmptyState icon={BookX} title="You haven't enrolled in any courses" description="Browse the published Geography and Economics courses and enrol to see them here." />
             <div className="mt-4">
               <Link href="/dashboard/student/courses" className={buttonClasses("secondary", "md")}>Browse courses</Link>
             </div>

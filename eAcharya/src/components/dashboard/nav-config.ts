@@ -18,7 +18,8 @@ export type NavIconName =
   | "Shield"
   | "UserRound"
   | "Users"
-  | "Video";
+  | "Video"
+  | "TrendingUp";
 
 export interface NavSection {
   /** Small uppercase group label shown above the items. */
@@ -41,9 +42,11 @@ export const DASHBOARD_NAV: Record<Role, NavSection[]> = {
       label: "Learn",
       items: [
         { label: "My Courses", icon: "BookOpen", href: "/dashboard/student/courses" },
+        { label: "e-Tutorial", icon: "MonitorPlay", href: "/tutorials" },
         { label: "e-Content", icon: "Library", href: "/dashboard/student/resources" },
         { label: "Live Classes", icon: "Video", href: "/dashboard/student/live" },
         { label: "Geography Lab", icon: "Map", href: "/geography-lab" },
+        { label: "Economics Lab", icon: "TrendingUp", href: "/economics-lab" },
       ],
     },
     {
@@ -62,8 +65,10 @@ export const DASHBOARD_NAV: Record<Role, NavSection[]> = {
       label: "Teach",
       items: [
         { label: "My Courses", icon: "BookOpen", href: "/dashboard/teacher/courses" },
+        { label: "e-Tutorial", icon: "MonitorPlay", href: "/tutorials" },
         { label: "Create Course", icon: "FilePlus2", href: "/dashboard/teacher/courses/new" },
         { label: "Videos", icon: "MonitorPlay", href: "/dashboard/teacher/videos" },
+        { label: "Private Doubts", icon: "MessagesSquare", href: "/dashboard/teacher/doubts" },
         { label: "Live Classes", icon: "Video", href: "/dashboard/teacher/live" },
       ],
     },

@@ -1,3 +1,17 @@
+# Performance Optimization — 2026-10-21
+
+**Status: IMPLEMENTED BY SOURCE EDIT; FULL BUILD/TEST VERIFICATION BLOCKED BY NPM REGISTRY DNS.**
+
+- Avoided Supabase Auth network validation on anonymous requests without an auth cookie while retaining redirects for anonymous dashboard requests and existing server-side guards/RLS. Server auth helpers now short-circuit anonymous reads when no SSR auth cookie exists.
+- Split public navigation from the display-only auth CTA; browser Supabase code is loaded on demand when an auth cookie exists.
+- Replaced the homepage globe's 4K JPEG texture with a 281,800-byte 2K WebP; throttled rendering work via pixel-ratio/anisotropy/geometry caps, viewport and tab visibility pause, reduced-motion handling, and resource cleanup.
+- Added request-scoped memoization for published course detail reads and narrowed lesson enrollment lookups to the current course.
+- Added public static asset caching and excluded common static formats (including GeoJSON) from middleware processing.
+- Added `PERFORMANCE_OPTIMIZATION_REPORT.md` with exact changes and verification limits. No database migration/RLS/env-secret changes were made.
+- Verification: Next config syntax and TypeScript parser syntax for eight changed files passed. `npm ci` failed fetching registry packages with `EAI_AGAIN`, so Vitest, Next build and semantic type-checking could not be completed. No live Lighthouse/browser/Supabase latency benchmark was available.
+
+---
+
 ## Phase 4 extension — India Geography Dataset Library — 2026-10-21
 
 ### Implemented in source
@@ -1327,3 +1341,20 @@ Teacher route `/dashboard/teacher/videos` (nav item "Videos"), then `/dashboard/
 - Updated course/tutorial descriptions and renamed the lesson tab to `Study notes / transcript`.
 - Updated the seed's course slugs to canonical course slugs so a database reset does not re-create duplicate `[Sample]` courses. The starter quiz remains a sample assessment.
 - Static SQL/content inventory checks were performed. Live Supabase migration, user-role access, full test suite and production build are not verified in this environment.
+
+## Forum, private teacher doubts, and published-course video repairs (2026-10-21)
+
+**Status: IMPLEMENTED IN SOURCE; Supabase/build verification NOT RUN.**
+
+- Corrected `20261104000001_class_forum_attachments.sql` so legacy discussion categories are normalized to `general` **before** the `discussions_category_check` constraint is added. Bucket configuration now updates an existing bucket instead of relying on `ON CONFLICT DO NOTHING`.
+- Added `supabase/migrations/20261106000001_eacharya_forum_video_doubts_repairs.sql` to restore forum posting/reply grants and policies, ensure the `forum-attachments` bucket exists, permit only immediately-published new lessons for teacher-owned published courses, and create the private teacher-doubt schema, participant RLS, private storage bucket, and limited helper RPCs.
+- Added student private-doubt UI under enrolled lessons: question title/body, optional timestamp, private image/PDF attachments, and teacher replies shown beside the same lesson. Direct/HLS video playback can provide the current time; YouTube uses manual seconds because this player does not load the YouTube IFrame API.
+- Added `/dashboard/teacher/doubts` for teachers to read and reply only to their own course's private doubts. Counterpart names and attachment access are participant-scoped.
+- Updated the teacher video list to count only lessons with supported playable URLs (rather than every lesson row), identify missing/unsupported video content, and allow adding immediately-published lessons to published courses without exposing edit/delete controls for existing published lessons.
+- Added a narrow server-side cleanup RPC for recent empty lesson rows if the second-stage `lesson_content` insert fails, preventing newly-created orphan rows when normal published-course deletion is blocked.
+
+### Verification limitations
+
+- No Supabase/PostgreSQL connection was available, so migration SQL, RLS/storage policy behaviour, RPC signatures, and end-to-end private attachments have **not** been executed against a database.
+- `npm ci --offline --ignore-scripts` could not install dependencies because the `zod` package tarball was not cached. TypeScript was attempted with the global compiler, but dependency/type packages (`next`, `react`, `zod`, Supabase clients, etc.) are missing and the output is not a valid project typecheck. Automated tests and production build are not claimed as passed.
+- Apply the repair migration in a disposable Supabase project first, then run `npm ci`, `npm run typecheck`, `npm test`, and `npm run build`. See `EACHARYA_FORUM_DOUBTS_VIDEO_REPAIR.md` for the manual checklist.

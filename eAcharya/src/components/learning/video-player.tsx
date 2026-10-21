@@ -42,6 +42,7 @@ export function VideoPlayer({
   startAt,
   canSave,
   allowDownload = true,
+  onCurrentTimeChange,
 }: {
   source: VideoSource;
   title: string;
@@ -49,6 +50,7 @@ export function VideoPlayer({
   startAt: number;
   canSave: boolean;
   allowDownload?: boolean;
+  onCurrentTimeChange?: (seconds: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSaved = useRef(0);
@@ -165,7 +167,10 @@ export function VideoPlayer({
           const target = resumeFrom(resumeAt.current, Number.isFinite(el.duration) ? el.duration : undefined);
           if (target > 0) el.currentTime = target;
         }}
-        onTimeUpdate={() => save(false)}
+        onTimeUpdate={(e) => {
+          save(false);
+          onCurrentTimeChange?.(Math.floor(e.currentTarget.currentTime));
+        }}
         onPause={() => save(true)}
         onEnded={() => save(true)}
       >

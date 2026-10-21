@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { ClassRow, CourseRow, LessonRow, UnitRow } from "@/types/app";
@@ -21,7 +22,7 @@ export async function getActiveClasses(): Promise<ClassRow[]> {
 
 export type CourseWithClass = CourseRow & {
   class: Pick<ClassRow, "grade" | "name"> | null;
-  subject?: { name: string } | null;
+  subject?: { name: string; slug?: string } | null;
   units?: { id: string; lessons: { id: string; is_published: boolean }[] }[];
 };
 
@@ -33,9 +34,9 @@ export function courseCounts(course: CourseWithClass) {
 }
 
 export const COURSE_LIST_SELECT =
-  "id, title, slug, description, class_id, subject_id, thumbnail_url, status, created_by, created_at, updated_at, class:classes!inner(grade, name), subject:subjects(name), units(id, lessons(id, is_published))";
+  "id, title, slug, description, class_id, subject_id, thumbnail_url, status, created_by, created_at, updated_at, class:classes!inner(grade, name), subject:subjects(name, slug), units(id, lessons(id, is_published))";
 
-export async function getPublishedCourses(grade?: number): Promise<CourseWithClass[]> {
+export async function getPublishedCourses(grade?: number, subject?: string): Promise<CourseWithClass[]> {
   if (!isSupabaseConfigured()) return [];
   const supabase = await createClient();
 
@@ -47,7 +48,9 @@ export async function getPublishedCourses(grade?: number): Promise<CourseWithCla
   if (grade) query = query.eq("class.grade", grade);
 
   const { data } = await query;
-  return (data ?? []) as unknown as CourseWithClass[];
+  const rows = (data ?? []) as unknown as CourseWithClass[];
+  // The course list is small, so the subject filter runs here instead of adding an inner join to the shared select.
+  return subject ? rows.filter((c) => c.subject?.slug === subject) : rows;
 }
 
 export interface CourseDetail {
@@ -55,7 +58,7 @@ export interface CourseDetail {
   units: (UnitRow & { lessons: LessonRow[] })[];
 }
 
-export async function getPublishedCourseBySlug(slug: string): Promise<CourseDetail | null> {
+export const getPublishedCourseBySlug = cache(async (slug: string): Promise<CourseDetail | null> => {
   if (!isSupabaseConfigured()) return null;
   const supabase = await createClient();
 
@@ -95,4 +98,4 @@ export async function getPublishedCourseBySlug(slug: string): Promise<CourseDeta
     course: courseRow,
     units: unitRows.map((u) => ({ ...u, lessons: lessonRows.filter((l) => l.unit_id === u.id) })),
   };
-}
+});

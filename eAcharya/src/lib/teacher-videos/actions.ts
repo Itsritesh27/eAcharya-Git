@@ -200,7 +200,7 @@ export async function addVideosAction(input: unknown): Promise<AddResult> {
         title: v.title.slice(0, MAX_TITLE),
         description: "",
         position: nextPosition + i,
-        is_published: publish,
+        is_published: owned.courseStatus === "published" ? true : publish,
       })),
     )
     .select("id, position");
@@ -222,13 +222,9 @@ export async function addVideosAction(input: unknown): Promise<AddResult> {
     );
   if (content.error) {
     // Do not leave title-only lessons behind: remove what was just created.
-    await ctx.supabase
-      .from("lessons")
-      .delete()
-      .in(
-        "id",
-        created.map((l) => l.id),
-      );
+    // Published-course lesson deletes are intentionally blocked by the normal RLS policy.
+    // A narrowly scoped SECURITY DEFINER cleanup removes only these fresh, still-empty rows.
+    await ctx.supabase.rpc("cleanup_failed_teacher_video_lessons", { p_lesson_ids: created.map((l) => l.id) });
     return { ok: false, error: GENERIC };
   }
 
@@ -310,7 +306,7 @@ async function ownedDraftUnit(ctx: Ctx, unitId: string) {
   const course = Array.isArray(row?.course) ? row?.course[0] : row?.course;
   if (!row || !course || course.created_by !== ctx.userId) return NOT_YOURS;
   // Teachers may edit their own course whether it is draft or published.
-  return { ok: true as const, courseId: course.id };
+  return { ok: true as const, courseId: course.id, courseStatus: course.status };
 }
 
 type Ctx = NonNullable<Awaited<ReturnType<typeof teacherContext>>>;

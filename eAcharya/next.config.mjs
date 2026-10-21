@@ -19,6 +19,19 @@ const nextConfig = {
           { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=()" },
         ],
       },
+      {
+        // Public, non-personalized assets can be reused on repeat visits.
+        source: "/textures/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+        ],
+      },
+      {
+        source: "/data/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
+        ],
+      },
     ];
   },
 };

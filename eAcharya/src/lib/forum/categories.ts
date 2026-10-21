@@ -6,12 +6,7 @@ export const FORUM_GRADES = [9, 10, 11, 12] as const;
 export type ForumGrade = (typeof FORUM_GRADES)[number];
 
 export const FORUM_CATEGORIES = [
-  { slug: "physical-geography", label: "Physical Geography", blurb: "Landforms, rocks, rivers, oceans and the atmosphere." },
-  { slug: "human-geography", label: "Human Geography", blurb: "Population, settlements, economy and culture." },
-  { slug: "indian-geography", label: "Indian Geography", blurb: "India's regions, resources, climate and people." },
-  { slug: "cartography", label: "Cartography", blurb: "Map reading, scale, projections and symbols." },
-  { slug: "climate", label: "Climate", blurb: "Weather, monsoons, climate types and change." },
-  { slug: "practical-work", label: "Practical Work", blurb: "Fieldwork, data tasks and Geography Lab activities." },
+  { slug: "general", label: "General", blurb: "Questions and discussions for this class." },
 ] as const;
 export type ForumCategorySlug = (typeof FORUM_CATEGORIES)[number]["slug"];
 

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, ChevronRight, FileText, Lock, VideoOff, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Lock } from "lucide-react";
 import { z } from "zod";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { BookmarkButton } from "@/components/learning/bookmark-button";
@@ -11,13 +11,14 @@ import { LessonOutline } from "@/components/learning/lesson-outline";
 import { LessonTabs } from "@/components/learning/lesson-tabs";
 import { NotesEditor } from "@/components/learning/notes-editor";
 import { ProgressBar } from "@/components/learning/progress-bar";
-import { VideoPlayer } from "@/components/learning/video-player";
+import { LessonVideoWithDoubts } from "@/components/teacher-doubts/lesson-video-with-doubts";
 import { RESOURCE_TYPE_INFO, ResourceIcon } from "@/components/resources/resource-icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireSession } from "@/lib/auth/session";
 import { getLessonPageData } from "@/lib/data/learning";
 import { computeCourseProgress } from "@/lib/learning/progress";
 import { resolveLessonVideo } from "@/lib/learning/video";
+import { getStudentLessonDoubts } from "@/lib/teacher-doubts/data";
 
 export const metadata: Metadata = { title: "Lesson" };
 export const dynamic = "force-dynamic";
@@ -41,6 +42,8 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   const canTrack = enrolled;
   const hasAccess = enrolled || content !== null; // owners/admins can preview without enrolling
   const source = resolveLessonVideo(content?.video_url, content?.video_sources);
+  const canAsk = session.profile.role === "student" && enrolled;
+  const initialDoubts = canAsk ? await getStudentLessonDoubts(session.userId, lesson.id) : [];
 
   return (
     <DashboardShell session={session}>
@@ -91,37 +94,19 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
             </div>
           ) : (
             <>
-              {source ? (
-                <VideoPlayer
-                  key={lesson.id}
-                  source={source}
-                  title={lesson.title}
-                  lessonId={lesson.id}
-                  startAt={progress?.positionSeconds ?? 0}
-                  canSave={canTrack}
-                  allowDownload={content?.allow_download !== false}
-                />
-              ) : (
-                <div className="flex aspect-video w-full flex-col items-center justify-center rounded-card border border-dashed border-sage-300 bg-sage-50/60 px-6 text-center">
-                  {content?.video_url || (Array.isArray(content?.video_sources) && content.video_sources.length > 0) ? (
-                    <>
-                      <TriangleAlert className="h-8 w-8 text-forest-500" aria-hidden />
-                      <p className="mt-3 font-semibold">This video can&apos;t be shown</p>
-                      <p className="mt-1 max-w-sm text-sm text-forest-600">
-                        The video link isn&apos;t a supported YouTube or direct video address. Please tell your teacher.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <VideoOff className="h-8 w-8 text-forest-500" aria-hidden />
-                      <p className="mt-3 font-semibold">No video has been added yet</p>
-                      <p className="mt-1 max-w-sm text-sm text-forest-600">
-                        You can still read the lesson details and use the notes and resources below.
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
+              <LessonVideoWithDoubts
+                key={lesson.id}
+                source={source}
+                videoConfigured={Boolean(content?.video_url || (Array.isArray(content?.video_sources) && content.video_sources.length > 0))}
+                title={lesson.title}
+                lessonId={lesson.id}
+                courseId={course.id}
+                startAt={progress?.positionSeconds ?? 0}
+                canTrack={canTrack}
+                allowDownload={content?.allow_download !== false}
+                canAsk={canAsk}
+                initialDoubts={initialDoubts}
+              />
 
               <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
