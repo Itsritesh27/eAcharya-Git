@@ -31,7 +31,7 @@ export function Earth3D({ className }: { className?: string }) {
       }
     };
 
-    (async () => {
+    const initialize = async () => {
       try {
         const THREE = await import("three");
         if (disposed) return;
@@ -56,7 +56,7 @@ export function Earth3D({ className }: { className?: string }) {
 
         // A 2K equirectangular texture is already higher-resolution than this
         // 460-520px display at the capped renderer DPR, on desktop and mobile.
-        const tex = await new THREE.TextureLoader().loadAsync("/textures/earth-2k.webp");
+        const tex = await new THREE.TextureLoader().loadAsync("/textures/earth-1k-v1.webp");
         if (disposed) {
           tex.dispose();
           return;
@@ -199,10 +199,31 @@ export function Earth3D({ className }: { className?: string }) {
         cleanupResources();
         if (!disposed) setFailed(true);
       }
-    })();
+    };
+
+    // Don't download Three.js or the globe texture until the globe is near the
+    // viewport. On mobile, users often scroll/read the hero before the globe
+    // enters view; deferring avoids competing with the first useful paint.
+    let bootObserver: IntersectionObserver | null = null;
+    if ("IntersectionObserver" in window) {
+      bootObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            bootObserver?.disconnect();
+            bootObserver = null;
+            void initialize();
+          }
+        },
+        { rootMargin: "180px 0px" },
+      );
+      bootObserver.observe(mount);
+    } else {
+      void initialize();
+    }
 
     return () => {
       disposed = true;
+      bootObserver?.disconnect();
       cleanupResources();
     };
   }, []);

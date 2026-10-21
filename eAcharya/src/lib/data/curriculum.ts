@@ -62,40 +62,31 @@ export const getPublishedCourseBySlug = cache(async (slug: string): Promise<Cour
   if (!isSupabaseConfigured()) return null;
   const supabase = await createClient();
 
+  // Fetch the course, ordered curriculum and lessons in one PostgREST request.
+  // The previous implementation made up to three sequential round trips before
+  // the page could render. RLS remains active because this uses the request user.
   const { data: course } = await supabase
     .from("courses")
     .select(
-      "id, title, slug, description, class_id, subject_id, thumbnail_url, status, created_by, created_at, updated_at, class:classes(grade, name), subject:subjects(name)",
+      "id, title, slug, description, class_id, subject_id, thumbnail_url, status, created_by, created_at, updated_at, class:classes(grade, name), subject:subjects(name), units(id, course_id, title, description, position, lessons(id, unit_id, title, description, position, is_published))",
     )
     .eq("slug", slug)
     .eq("status", "published")
     .maybeSingle();
   if (!course) return null;
 
-  const courseRow = course as unknown as CourseWithClass;
+  type NestedUnit = UnitRow & { lessons: LessonRow[] };
+  const courseRow = course as unknown as CourseWithClass & { units?: NestedUnit[] };
+  const units = [...(courseRow.units ?? [])]
+    .sort((a, b) => a.position - b.position)
+    .map((unit) => ({
+      ...unit,
+      // Keep draft lessons out of the published course view even if a role's
+      // RLS policy permits reading them.
+      lessons: [...(unit.lessons ?? [])]
+        .filter((lesson) => lesson.is_published)
+        .sort((a, b) => a.position - b.position),
+    }));
 
-  const { data: units } = await supabase
-    .from("units")
-    .select("id, course_id, title, description, position")
-    .eq("course_id", courseRow.id)
-    .order("position");
-
-  const unitRows = (units ?? []) as UnitRow[];
-  const unitIds = unitRows.map((u) => u.id);
-
-  let lessonRows: LessonRow[] = [];
-  if (unitIds.length > 0) {
-    const { data: lessons } = await supabase
-      .from("lessons")
-      .select("id, unit_id, title, description, position, is_published")
-      .in("unit_id", unitIds)
-      .eq("is_published", true)
-      .order("position");
-    lessonRows = (lessons ?? []) as LessonRow[];
-  }
-
-  return {
-    course: courseRow,
-    units: unitRows.map((u) => ({ ...u, lessons: lessonRows.filter((l) => l.unit_id === u.id) })),
-  };
+  return { course: courseRow, units };
 });
