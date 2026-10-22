@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseEnv } from "./env";
+import { timed } from "@/lib/perf";
 
 /**
  * Refreshes a present Supabase session cookie and applies coarse route
@@ -63,11 +64,14 @@ export async function updateSession(request: NextRequest) {
     return failClosed(request, pathname, response);
   }
 
-  // getUser() validates the token with the Auth server (unlike getSession()).
+  // getClaims() refreshes an expired token and verifies the JWT signature
+  // locally (JWKS is cached), avoiding an Auth-server round trip on every
+  // request. Unlike getSession() it never trusts an unverified cookie.
   let user: { id: string } | null = null;
   try {
-    const result = await supabase.auth.getUser();
-    user = result.data.user;
+    const result = await timed("auth.getClaims (middleware)", () => supabase.auth.getClaims());
+    const sub = result.data?.claims?.sub;
+    user = sub ? { id: sub } : null;
   } catch (err) {
     console.error("[middleware] getUser failed:", err);
     return failClosed(request, pathname, response);

@@ -24,7 +24,7 @@ export async function getTeacherChapters(userId: string): Promise<CourseChapters
   const { data, error } = await supabase
     .from("courses")
     .select("id, title, status, units(id, title, position, lessons(id, content:lesson_content(video_url)) )")
-    .eq("created_by", userId)
+    .or(`created_by.eq.${userId},created_by.is.null`)
     .order("title");
   if (error) throw new Error("Could not load your courses.");
 
@@ -85,7 +85,7 @@ export async function getChapterDetail(unitId: string, userId: string): Promise<
   const row = data as unknown as Obj;
   const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
   const course = one(row.course as Obj | Obj[] | null);
-  if (!course || course.created_by !== userId) return null;
+  if (!course || (course.created_by !== null && course.created_by !== userId)) return null;
 
   const videos = ((row.lessons ?? []) as Obj[])
     .slice()

@@ -1,8 +1,10 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { isRole, redirectTargetFor } from "@/lib/auth/roles";
+import { timed } from "@/lib/perf";
 import type { Profile, Role } from "@/types/app";
 
 export interface SessionProfile {
@@ -29,24 +31,40 @@ async function hasSupabaseAuthCookie(): Promise<boolean> {
 }
 
 /**
+ * Resolves the authenticated user ONCE per request (React cache).
+ * getClaims() verifies the JWT signature locally against the project's cached
+ * JWKS when asymmetric signing keys are enabled, so no Auth round trip is
+ * needed; with legacy shared-secret JWTs supabase-js transparently falls back
+ * to a server validation, so this is never less safe than getUser().
+ * The middleware has already refreshed an expired token before this runs.
+ */
+const getAuthUser = cache(async (): Promise<{ id: string; email: string | null } | null> => {
+  const supabase = await createClient();
+  const { data, error } = await timed("auth.getClaims (page)", () => supabase.auth.getClaims());
+  const claims = data?.claims;
+  if (error || !claims?.sub) return null;
+  return { id: claims.sub, email: typeof claims.email === "string" ? claims.email : null };
+});
+
+/**
  * Returns the signed-in user's profile, or null when signed out / unconfigured.
- * Uses auth.getUser() (server-validated), never trusting cookies alone.
+ * Identity comes from getClaims() (signature-verified JWT), never from unverified cookies.
  * The role always comes from the database, never from the request.
  */
-export async function getSessionProfile(): Promise<SessionProfile | null> {
+export const getSessionProfile = cache(async (): Promise<SessionProfile | null> => {
   if (!isSupabaseConfigured() || !(await hasSupabaseAuthCookie())) return null;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return null;
+  const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, avatar_url, role, created_at, updated_at")
-    .eq("id", user.id)
-    .maybeSingle();
+  const { data, error } = await timed("profiles query", () =>
+    supabase
+      .from("profiles")
+      .select("id, full_name, avatar_url, role, created_at, updated_at")
+      .eq("id", user.id)
+      .maybeSingle(),
+  );
 
   if (error || !data || !isRole((data as Profile).role)) {
     // Signed in but no usable profile: send to a page that does NOT bounce
@@ -54,18 +72,16 @@ export async function getSessionProfile(): Promise<SessionProfile | null> {
     redirect("/auth/profile-error");
   }
 
-  return { userId: user.id, email: user.email ?? null, profile: data as Profile };
-}
+  return { userId: user.id, email: user.email, profile: data as Profile };
+});
 
 /** Signed-in user's id and role for public pages. Never redirects; null if unavailable. */
 export async function getViewer(): Promise<{ userId: string; role: Role } | null> {
   if (!isSupabaseConfigured() || !(await hasSupabaseAuthCookie())) return null;
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser();
     if (!user) return null;
+    const supabase = await createClient();
     const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
     const role = (data as { role?: unknown } | null)?.role;
     return isRole(role) ? { userId: user.id, role } : null;
@@ -85,11 +101,7 @@ export async function requireSession(nextPath: string): Promise<SessionProfile> 
 export async function isSignedIn(): Promise<boolean> {
   if (!isSupabaseConfigured() || !(await hasSupabaseAuthCookie())) return false;
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    return Boolean(user);
+    return Boolean(await getAuthUser());
   } catch {
     return false;
   }

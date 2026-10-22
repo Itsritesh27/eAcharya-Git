@@ -104,7 +104,7 @@ export async function ResourceLibrary({
             </label>
             <select id="grade" name="grade" defaultValue={filters.grade ?? ""} className={selectClass}>
               <option value="">All classes</option>
-              {GRADES.map((g) => (
+              {options.grades.map((g) => (
                 <option key={g} value={g}>
                   Class {g}
                 </option>

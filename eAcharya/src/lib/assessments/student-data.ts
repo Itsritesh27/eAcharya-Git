@@ -70,7 +70,8 @@ export async function listStudentAssessments(): Promise<StudentAssessment[]> {
     .from("assessments")
     .select(SELECT)
     .eq("status", "published")
-    .order("closes_at", { ascending: true, nullsFirst: false });
+    .order("closes_at", { ascending: true, nullsFirst: false })
+    .limit(200); // safety cap: never ship an unbounded list to the page
   if (error) throw new Error("Could not load your assessments.");
 
   const now = new Date();

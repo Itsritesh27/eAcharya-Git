@@ -31,8 +31,28 @@ export function Earth3D({ className }: { className?: string }) {
       }
     };
 
-    const initialize = async () => {
+    (async () => {
       try {
+        // Phones, Data Saver and low-memory devices get the lightweight SVG globe: it skips the
+        // ~600 KB three.js bundle, the 280 KB texture and continuous WebGL rendering.
+        const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
+        const lightweight =
+          window.matchMedia("(max-width: 767px)").matches ||
+          nav.connection?.saveData === true ||
+          (typeof nav.deviceMemory === "number" && nav.deviceMemory <= 2);
+        if (lightweight) {
+          if (!disposed) setFailed(true);
+          return;
+        }
+
+        // Let the page become interactive first; the globe is decorative, so
+        // its ~600 KB of three.js must not compete with content for the main thread.
+        await new Promise<void>((resolve) => {
+          const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+          if (w.requestIdleCallback) w.requestIdleCallback(() => resolve(), { timeout: 2500 });
+          else setTimeout(resolve, 800);
+        });
+        if (disposed) return;
         const THREE = await import("three");
         if (disposed) return;
 
@@ -56,7 +76,7 @@ export function Earth3D({ className }: { className?: string }) {
 
         // A 2K equirectangular texture is already higher-resolution than this
         // 460-520px display at the capped renderer DPR, on desktop and mobile.
-        const tex = await new THREE.TextureLoader().loadAsync("/textures/earth-1k-v1.webp");
+        const tex = await new THREE.TextureLoader().loadAsync("/textures/earth-2k.webp");
         if (disposed) {
           tex.dispose();
           return;
@@ -65,7 +85,7 @@ export function Earth3D({ className }: { className?: string }) {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 4);
 
-        const earthGeometry = new THREE.SphereGeometry(1.5, 72, 72);
+        const earthGeometry = new THREE.SphereGeometry(1.5, 56, 56);
         const earthMaterial = new THREE.MeshStandardMaterial({
           map: tex,
           roughness: 0.85,
@@ -199,31 +219,10 @@ export function Earth3D({ className }: { className?: string }) {
         cleanupResources();
         if (!disposed) setFailed(true);
       }
-    };
-
-    // Don't download Three.js or the globe texture until the globe is near the
-    // viewport. On mobile, users often scroll/read the hero before the globe
-    // enters view; deferring avoids competing with the first useful paint.
-    let bootObserver: IntersectionObserver | null = null;
-    if ("IntersectionObserver" in window) {
-      bootObserver = new IntersectionObserver(
-        (entries) => {
-          if (entries.some((entry) => entry.isIntersecting)) {
-            bootObserver?.disconnect();
-            bootObserver = null;
-            void initialize();
-          }
-        },
-        { rootMargin: "180px 0px" },
-      );
-      bootObserver.observe(mount);
-    } else {
-      void initialize();
-    }
+    })();
 
     return () => {
       disposed = true;
-      bootObserver?.disconnect();
       cleanupResources();
     };
   }, []);

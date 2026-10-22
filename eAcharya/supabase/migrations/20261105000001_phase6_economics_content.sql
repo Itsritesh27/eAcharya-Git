@@ -1,5 +1,5 @@
 -- eAcharya Phase 6: NCERT-aligned Economics learning content for Classes 9-12 (alongside the existing Geography content).
--- Adds the Economics subject, six book courses (36 chapters), original study guides, practice worksheets, official textbook links,
+-- Adds the Economics subject, six book courses (36 chapters), the syllabus (chapters) and official textbook links; lessons/videos are added by teachers,
 -- and subject-neutral class descriptions. The forum is class-based (single general category), so no forum changes are needed.
 -- No copyrighted textbook chapter text or PDF is copied into this migration. Geography content is not touched.
 -- Back up production data before applying. The script is idempotent for subject, course, unit, lesson, content and resource rows.
@@ -93,58 +93,11 @@ SELECT c.id, 'Chapter ' || (ch.chapter_position + 1)::text || ': ' || ch.chapter
 FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug
 WHERE NOT EXISTS (SELECT 1 FROM public.units u WHERE u.course_id = c.id AND u.position = ch.chapter_position);
 
--- 6. Two lessons per chapter: a study guide (position 0) and a practice worksheet (position 1).
-UPDATE public.lessons l SET title = 'Study guide: ' || ch.chapter_title, description = 'Original eAcharya lesson notes aligned to ' || ch.chapter_title || '.', is_published = true, updated_at = now()
-FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE l.unit_id = u.id AND l.position = 0;
-UPDATE public.lessons l SET title = 'Practice worksheet: ' || ch.chapter_title, description = 'Original review questions and an applied economics task.', is_published = true, updated_at = now()
-FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE l.unit_id = u.id AND l.position = 1;
-
-INSERT INTO public.lessons (unit_id, title, description, position, is_published)
-SELECT u.id, 'Study guide: ' || ch.chapter_title, 'Original eAcharya lesson notes aligned to ' || ch.chapter_title || '.', 0, true
-FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE NOT EXISTS (SELECT 1 FROM public.lessons l WHERE l.unit_id = u.id AND l.position = 0);
-INSERT INTO public.lessons (unit_id, title, description, position, is_published)
-SELECT u.id, 'Practice worksheet: ' || ch.chapter_title, 'Original review questions and an applied economics task.', 1, true
-FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE NOT EXISTS (SELECT 1 FROM public.lessons l WHERE l.unit_id = u.id AND l.position = 1);
-
--- 7. Original study notes. Existing video_url / video_sources / allow_download settings are preserved (only objectives, transcript and duration are written).
-WITH content_rows AS (
-  SELECT l.id AS lesson_id, ARRAY[ch.objective_one, ch.objective_two, 'Use a labelled diagram, table or data source where it helps explain this topic.'] AS objectives,
-    '## Core idea' || E'\n\n' || ch.focus || E'\n\n' ||
-    '## Think like an economist' || E'\n\n' || 'Ask what is being produced, exchanged or decided, who gains and who bears the cost, and what evidence shows the outcome. Separate facts from opinions, and short-run effects from long-run ones. State the units, the year and the source whenever you use numbers.' || E'\n\n' ||
-    '## Study routine' || E'\n\n' || E'1. Define the key terms in your own words.\n2. Draw a labelled diagram, flow chart or small comparison table.\n3. Add one example from India or your own locality.\n4. Check every calculation for units and for the base year or reference year.' || E'\n\n' ||
-    '## Apply it' || E'\n\n' || ch.activity || E'\n\n' ||
-    '## Self-check' || E'\n\n' || '1. ' || ch.question_one || E'\n2. ' || ch.question_two || E'\n\n' ||
-    'Study note: This is original eAcharya learning support. Consult the linked current NCERT edition and annual CBSE syllabus for prescribed scope.' AS transcript, 12 AS duration_minutes
-  FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position JOIN public.lessons l ON l.unit_id = u.id AND l.position = 0
-  UNION ALL
-  SELECT l.id AS lesson_id, ARRAY['Revise the core ideas in ' || ch.chapter_title || '.', 'Support each answer with a diagram, table, calculation or example where appropriate.'] AS objectives,
-    '# Practice worksheet: ' || ch.chapter_title || E'\n\n' ||
-    'This is an original eAcharya worksheet aligned to the chapter theme, not copied from the textbook.' || E'\n\n' ||
-    '## Short-answer practice' || E'\n\n' || '1. ' || ch.question_one || E'\n2. ' || ch.question_two || E'\n3. Explain one idea from this chapter using a labelled diagram, a small table or a reliable example.' || E'\n\n' ||
-    '## Applied task' || E'\n\n' || ch.activity || E'\n\n' ||
-    '## Answer-writing checklist' || E'\n\n' || 'Define the term, explain the reasoning step by step, use a specific example or a worked calculation, and end with a brief conclusion. If you use figures, state the unit, the year and the source.' AS transcript, 15 AS duration_minutes
-  FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position JOIN public.lessons l ON l.unit_id = u.id AND l.position = 1
-)
-INSERT INTO public.lesson_content (lesson_id, objectives, transcript, duration_minutes)
-SELECT lesson_id, objectives, transcript, duration_minutes FROM content_rows
-ON CONFLICT (lesson_id) DO UPDATE SET objectives = EXCLUDED.objectives, transcript = EXCLUDED.transcript, duration_minutes = EXCLUDED.duration_minutes, updated_at = now();
-
--- 8. One official textbook reference per book and one worksheet resource per chapter. Idempotent by title within the course.
+-- 6. One official textbook reference per book. Idempotent by title within the course.
 INSERT INTO public.resources (title, description, resource_type, course_id, topic, external_url, is_published)
 SELECT 'Official NCERT textbook: ' || b.book_name, 'Open the official NCERT textbook portal and choose this book. Check the current edition and the applicable annual syllabus.', 'link', c.id, 'NCERT textbook', b.official_url, true
 FROM phase6_books b JOIN public.courses c ON c.slug = b.book_slug
 WHERE NOT EXISTS (SELECT 1 FROM public.resources r WHERE r.course_id = c.id AND r.title = 'Official NCERT textbook: ' || b.book_name AND r.resource_type = 'link');
-
-INSERT INTO public.resources (title, description, resource_type, course_id, unit_id, lesson_id, topic, body, is_published)
-SELECT 'Practice worksheet: ' || ch.chapter_title, 'Original chapter review, short-answer prompts and one applied economics task.', 'notes', c.id, u.id, l.id, 'Practice worksheet',
-  '# ' || ch.chapter_title || E'\n\n' || 'Original eAcharya practice support; use the current textbook for the complete prescribed chapter.' || E'\n\n' ||
-  '1. ' || ch.question_one || E'\n2. ' || ch.question_two || E'\n3. Explain one idea using a labelled diagram, table or worked example.' || E'\n\n' || 'Applied task: ' || ch.activity || E'\n\n' || 'Check your answers for accurate terminology, clear reasoning, a relevant example and a unit, year and source wherever data is used.', true
-FROM phase6_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position JOIN public.lessons l ON l.unit_id = u.id AND l.position = 1
-WHERE NOT EXISTS (SELECT 1 FROM public.resources r WHERE r.course_id = c.id AND r.unit_id = u.id AND r.title = 'Practice worksheet: ' || ch.chapter_title AND r.resource_type = 'notes');
 
 DROP TABLE phase6_chapters;
 DROP TABLE phase6_books;

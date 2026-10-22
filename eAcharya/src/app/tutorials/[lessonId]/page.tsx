@@ -28,7 +28,13 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   if (!z.string().uuid().safeParse(lessonId).success) notFound();
 
   const session = await requireSession(`/tutorials/${lessonId}`);
-  const data = await getLessonPageData(lessonId, session.userId);
+  // The student's own doubts only depend on (userId, lessonId), so fetch them in parallel with the
+  // lesson data instead of after it. They are used only if the student turns out to be enrolled.
+  const isStudent = session.profile.role === "student";
+  const [data, studentDoubts] = await Promise.all([
+    getLessonPageData(lessonId, session.userId),
+    isStudent ? getStudentLessonDoubts(session.userId, lessonId) : Promise.resolve([]),
+  ]);
   if (!data) notFound();
 
   const { lesson, unit, course, outline, flat, content, progress, note, bookmarked, enrolled, resources, completedIds } = data;
@@ -42,8 +48,8 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   const canTrack = enrolled;
   const hasAccess = enrolled || content !== null; // owners/admins can preview without enrolling
   const source = resolveLessonVideo(content?.video_url, content?.video_sources);
-  const canAsk = session.profile.role === "student" && enrolled;
-  const initialDoubts = canAsk ? await getStudentLessonDoubts(session.userId, lesson.id) : [];
+  const canAsk = isStudent && enrolled;
+  const initialDoubts = canAsk ? studentDoubts : [];
 
   return (
     <DashboardShell session={session}>

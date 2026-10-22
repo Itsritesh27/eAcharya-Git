@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { RESOURCE_COLUMNS } from "@/lib/data/learning";
+import { getSessionProfile } from "@/lib/auth/session";
 import { PAGE_SIZE } from "@/lib/learning/search";
 import type { ResourceRow, ResourceType } from "@/types/app";
 
@@ -74,18 +75,31 @@ export async function searchResources(f: ResourceFilters): Promise<ResourceListR
 }
 
 export interface ResourceFilterOptions {
+  /** Class grades that have at least one course the viewer can see (enrolled courses only for students). */
+  grades: number[];
   courses: { id: string; title: string }[];
   units: { id: string; title: string }[];
   topics: string[];
 }
 
 export async function getResourceFilterOptions(courseId?: string): Promise<ResourceFilterOptions> {
-  const empty: ResourceFilterOptions = { courses: [], units: [], topics: [] };
+  const empty: ResourceFilterOptions = { grades: [], courses: [], units: [], topics: [] };
   if (!isSupabaseConfigured()) return empty;
   const supabase = await createClient();
 
+  // Students only see courses they are enrolled in (RLS enforces the same for resources).
+  const session = await getSessionProfile();
+  let enrolledIds: string[] | null = null;
+  if (session?.profile.role === "student") {
+    const { data: enr } = await supabase.from("enrollments").select("course_id").eq("user_id", session.userId);
+    enrolledIds = ((enr ?? []) as { course_id: string }[]).map((e) => e.course_id);
+    if (enrolledIds.length === 0) return empty;
+  }
+
+  const coursesQuery = supabase.from("courses").select("id, title, class:classes(grade)").eq("status", "published").order("title");
+
   const [{ data: courses }, { data: units }, { data: topics }] = await Promise.all([
-    supabase.from("courses").select("id, title").eq("status", "published").order("title"),
+    enrolledIds ? coursesQuery.in("id", enrolledIds) : coursesQuery,
     courseId
       ? supabase.from("units").select("id, title").eq("course_id", courseId).order("position")
       : Promise.resolve({ data: [] as { id: string; title: string }[] }),
@@ -95,8 +109,16 @@ export async function getResourceFilterOptions(courseId?: string): Promise<Resou
   const topicSet = new Set<string>();
   for (const t of (topics ?? []) as { topic: string | null }[]) if (t.topic) topicSet.add(t.topic);
 
+  const courseRows = (courses ?? []) as unknown as { id: string; title: string; class: { grade: number } | { grade: number }[] | null }[];
+  const grades = new Set<number>();
+  for (const c of courseRows) {
+    const cls = Array.isArray(c.class) ? c.class[0] : c.class;
+    if (cls?.grade) grades.add(cls.grade);
+  }
+
   return {
-    courses: (courses ?? []) as { id: string; title: string }[],
+    grades: [...grades].sort((a, b) => a - b),
+    courses: courseRows.map(({ id, title }) => ({ id, title })),
     units: (units ?? []) as { id: string; title: string }[],
     topics: [...topicSet].sort((a, b) => a.localeCompare(b)),
   };

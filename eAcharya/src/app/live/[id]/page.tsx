@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { LiveRoom } from "@/components/live/live-room";
+import { LiveRoom } from "@/components/live/live-room-lazy";
 import { requireSession } from "@/lib/auth/session";
 import { getSession } from "@/lib/live-sessions/data";
 import { idSchema } from "@/lib/live-sessions/validation";

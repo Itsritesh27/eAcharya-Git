@@ -13,6 +13,7 @@ import { listStudentAssessments, type StudentAssessment } from "@/lib/assessment
 import { getEnrolledCourses, getRecentLessons } from "@/lib/data/learning";
 import { createClient } from "@/lib/supabase/server";
 import { combineProgress } from "@/lib/learning/progress";
+import { timed } from "@/lib/perf";
 
 export const metadata: Metadata = { title: "Student Dashboard" };
 export const dynamic = "force-dynamic";
@@ -35,14 +36,14 @@ function Stat({ icon: Icon, value, label, tone }: { icon: LucideIcon; value: str
 }
 
 export default async function StudentDashboardPage() {
-  const session = await requireRole("student");
+  const session = await timed("requireRole total", () => requireRole("student"));
   const supabase = await createClient();
 
   const [enrolled, recent, assessments, results] = await Promise.all([
-    getEnrolledCourses(session.userId),
-    getRecentLessons(session.userId, 5),
-    listStudentAssessments().catch(() => [] as StudentAssessment[]),
-    supabase.rpc("get_my_results").then((r) => (Array.isArray(r.data) ? r.data : []) as { assessment_id: string; percentage: number | null }[]),
+    timed("getEnrolledCourses", () => getEnrolledCourses(session.userId)),
+    timed("getRecentLessons", () => getRecentLessons(session.userId, 5)),
+    timed("listStudentAssessments", () => listStudentAssessments()).catch(() => [] as StudentAssessment[]),
+    timed("rpc get_my_results", () => supabase.rpc("get_my_results")).then((r) => (Array.isArray(r.data) ? r.data : []) as { assessment_id: string; percentage: number | null }[]),
   ]);
 
   const overall = combineProgress(enrolled.map((e) => e.progress));
