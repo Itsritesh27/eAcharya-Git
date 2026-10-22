@@ -7,9 +7,6 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   outputFileTracingRoot: projectRoot,
   reactStrictMode: true,
-  // Preserve the project's existing Netlify build behavior. Run npm run typecheck locally before deployment.
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
   poweredByHeader: false,
   async headers() {
     return [
@@ -26,9 +23,7 @@ const nextConfig = {
         // Public, non-personalized assets can be reused on repeat visits.
         source: "/textures/:path*",
         headers: [
-          // Texture URLs are versioned when their contents change, so the
-          // browser/CDN can safely reuse them for a year.
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+          { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ],
       },
       {

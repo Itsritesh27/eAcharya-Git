@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { CURRICULUM_TAG } from "@/lib/supabase/public";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseEnv, isSupabaseConfigured } from "@/lib/supabase/env";
@@ -241,6 +242,7 @@ export async function addVideosAction(input: unknown): Promise<AddResult> {
     if (!r.ok) resourcesFailed += items.length;
   }
 
+  revalidateTag(CURRICULUM_TAG);
   revalidatePath(`/dashboard/teacher/videos/${unitId}`);
   revalidatePath("/dashboard/teacher/videos");
   return { ok: true, added: created.length, skipped, ...(resourcesFailed > 0 ? { resourcesFailed } : {}) };
@@ -264,6 +266,7 @@ export async function renameVideoAction(input: unknown): Promise<{ ok: true } | 
   if (error || !data || data.length === 0) {
     return { ok: false, error: "Could not rename this video. It may be in a published course." };
   }
+  revalidateTag(CURRICULUM_TAG);
   revalidatePath(`/dashboard/teacher/videos/${parsed.data.unitId}`);
   return { ok: true };
 }
@@ -286,7 +289,52 @@ export async function removeVideoAction(input: unknown): Promise<{ ok: true } | 
   if (error || !data || data.length === 0) {
     return { ok: false, error: "Could not remove this video. It may be in a published course." };
   }
+  revalidateTag(CURRICULUM_TAG);
   revalidatePath(`/dashboard/teacher/videos/${parsed.data.unitId}`);
+  revalidatePath("/dashboard/teacher/videos");
+  return { ok: true };
+}
+
+const chapterSchema = z.object({
+  courseId: uuid,
+  title: z.string().trim().min(3, "Enter a chapter title (at least 3 characters)").max(120, "Title is too long"),
+});
+
+/** Adds a chapter (unit) at the end of a course the signed-in teacher owns. */
+export async function addChapterAction(input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = chapterSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the chapter title." };
+  const ctx = await teacherContext();
+  if (!ctx) return NO_ACCESS;
+
+  const { data: course } = await ctx.supabase
+    .from("courses")
+    .select("id, created_by")
+    .eq("id", parsed.data.courseId)
+    .maybeSingle();
+  const owner = (course as { created_by: string | null } | null)?.created_by;
+  // Teachers may add to their own courses and to the shared NCERT courses (no owner).
+  if (!course || (owner !== null && owner !== ctx.userId)) {
+    return { ok: false, error: "This course was not found, or it belongs to another teacher." };
+  }
+
+  const { data: last } = await ctx.supabase
+    .from("units")
+    .select("position")
+    .eq("course_id", parsed.data.courseId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const position = ((last as { position: number } | null)?.position ?? -1) + 1;
+
+  const { error } = await ctx.supabase
+    .from("units")
+    .insert({ course_id: parsed.data.courseId, title: parsed.data.title, position });
+  if (error) {
+    console.error("[addChapter] failed:", { code: error.code, message: error.message });
+    return { ok: false, error: "Could not add the chapter. If the course is published, make sure the latest database migration has been applied." };
+  }
+  revalidateTag(CURRICULUM_TAG);
   revalidatePath("/dashboard/teacher/videos");
   return { ok: true };
 }
@@ -304,7 +352,7 @@ async function ownedDraftUnit(ctx: Ctx, unitId: string) {
       | null;
   } | null;
   const course = Array.isArray(row?.course) ? row?.course[0] : row?.course;
-  if (!row || !course || course.created_by !== ctx.userId) return NOT_YOURS;
+  if (!row || !course || (course.created_by !== null && course.created_by !== ctx.userId)) return NOT_YOURS;
   // Teachers may edit their own course whether it is draft or published.
   return { ok: true as const, courseId: course.id, courseStatus: course.status };
 }
@@ -411,6 +459,7 @@ export async function removeLessonResourceAction(input: unknown): Promise<{ ok: 
   if (row.storage_path && isOwnResourcePath(row.storage_path, ctx.userId)) {
     await ctx.supabase.storage.from(RESOURCE_BUCKET).remove([row.storage_path]);
   }
+  revalidateTag(CURRICULUM_TAG);
   revalidatePath(`/dashboard/teacher/videos/${parsed.data.unitId}`);
   if (row.lesson_id) revalidatePath(`/tutorials/${row.lesson_id}`);
   return { ok: true };

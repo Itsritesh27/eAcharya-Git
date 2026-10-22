@@ -50,6 +50,27 @@ export async function signInAction(input: unknown): Promise<ActionResult> {
   return { ok: true };
 }
 
+const SIGN_UP_FALLBACK = "We could not create that account. Try a different email or sign in.";
+
+/** Map Supabase errors that are safe to show. Anything else stays generic. */
+function signUpErrorMessage(error: { message: string; code?: string; status?: number }): string {
+  const code = error.code ?? "";
+  const msg = error.message ?? "";
+  if (code === "over_email_send_rate_limit" || code === "over_request_rate_limit" || error.status === 429 || /rate limit/i.test(msg)) {
+    return "Too many sign-up attempts right now. Please wait a few minutes and try again.";
+  }
+  if (code === "email_provider_disabled" || code === "signup_disabled") {
+    return "Sign-ups are currently turned off. Please contact an administrator.";
+  }
+  if (code === "weak_password") {
+    return "That password is too weak. Choose a longer, less common password.";
+  }
+  if (code === "unexpected_failure" || /sending (confirmation|email)|smtp/i.test(msg)) {
+    return "We could not send the verification email. Please try again shortly.";
+  }
+  return SIGN_UP_FALLBACK;
+}
+
 export async function signUpAction(input: unknown): Promise<ActionResult> {
   // Zod strips unknown keys, so a forged `role` in the payload is discarded.
   const parsed = signUpSchema.safeParse(input);
@@ -70,7 +91,14 @@ export async function signUpAction(input: unknown): Promise<ActionResult> {
     },
   });
   if (error) {
-    return { ok: false, error: "We could not create that account. Try a different email or sign in." };
+    // Log the real cause server-side (terminal / hosting logs) so it can be diagnosed.
+    // Never include the email or password here.
+    console.error("[signUp] Supabase rejected sign-up:", {
+      code: (error as { code?: string }).code,
+      status: (error as { status?: number }).status,
+      message: error.message,
+    });
+    return { ok: false, error: signUpErrorMessage(error) };
   }
   return {
     ok: true,

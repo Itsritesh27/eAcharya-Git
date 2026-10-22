@@ -1,5 +1,5 @@
 -- eAcharya Phase 5: NCERT-aligned Geography learning content for Classes 9-12.
--- Adds original study guides, practice activities, chapter worksheet resources and official textbook links.
+-- Adds the syllabus (one chapter per NCERT book chapter) and official textbook links. Lessons/videos are added by teachers.
 -- No copyrighted textbook chapter text or PDF is copied into this migration.
 -- Review content/course changes and back up production data before applying.
 INSERT INTO public.classes (grade, name, description, is_active) VALUES
@@ -129,61 +129,14 @@ SELECT c.id, 'Chapter ' || (ch.chapter_position + 1)::text || ': ' || ch.chapter
 FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug
 WHERE NOT EXISTS (SELECT 1 FROM public.units u WHERE u.course_id = c.id AND u.position = ch.chapter_position);
 
--- Main study guide and practice activity per chapter. Keep existing lesson IDs where possible.
-UPDATE public.lessons l SET title = 'Study guide: ' || ch.chapter_title, description = 'Original eAcharya lesson notes aligned to ' || ch.chapter_title || '.', is_published = true, updated_at = now()
-FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE l.unit_id = u.id AND l.position = 0;
-UPDATE public.lessons l SET title = 'Practice worksheet: ' || ch.chapter_title, description = 'Original review questions and an applied geography activity.', is_published = true, updated_at = now()
-FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE l.unit_id = u.id AND l.position = 1;
-
-INSERT INTO public.lessons (unit_id, title, description, position, is_published)
-SELECT u.id, 'Study guide: ' || ch.chapter_title, 'Original eAcharya lesson notes aligned to ' || ch.chapter_title || '.', 0, true
-FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE NOT EXISTS (SELECT 1 FROM public.lessons l WHERE l.unit_id = u.id AND l.position = 0);
-INSERT INTO public.lessons (unit_id, title, description, position, is_published)
-SELECT u.id, 'Practice worksheet: ' || ch.chapter_title, 'Original review questions and an applied geography activity.', 1, true
-FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position
-WHERE NOT EXISTS (SELECT 1 FROM public.lessons l WHERE l.unit_id = u.id AND l.position = 1);
-
--- Original study notes for every chapter. Preserve any existing video_url/video_sources/allow_download settings.
-WITH content_rows AS (
-  SELECT l.id AS lesson_id, ARRAY[ch.objective_one, ch.objective_two, 'Use a labelled diagram, map or data source where it helps explain this topic.'] AS objectives,
-    '## Core idea' || E'\n\n' || ch.focus || E'\n\n' ||
-    '## Think geographically' || E'\n\n' || 'Ask where the pattern occurs, why it varies between places, which processes shape it, and who or what is affected. Use a stated scale and evidence rather than relying only on general impressions.' || E'\n\n' ||
-    '## Study routine' || E'\n\n' || '1. Define the central terms in your own words.\n2. Draw a labelled sketch, map, process diagram or short comparison table.\n3. Add one example from India or your local area.\n4. State the data year and source whenever you use statistics.' || E'\n\n' ||
-    '## Apply it' || E'\n\n' || ch.activity || E'\n\n' ||
-    '## Self-check' || E'\n\n' || '1. ' || ch.question_one || E'\n2. ' || ch.question_two || E'\n\n' ||
-    'Study note: This is original eAcharya learning support. Consult the linked current NCERT edition and annual CBSE syllabus for prescribed scope.' AS transcript, 12 AS duration_minutes
-  FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position JOIN public.lessons l ON l.unit_id = u.id AND l.position = 0
-  UNION ALL
-  SELECT l.id AS lesson_id, ARRAY['Revise the core ideas in ' || ch.chapter_title || '.', 'Support each answer with a map, diagram, comparison or evidence where appropriate.'] AS objectives,
-    '# Practice worksheet: ' || ch.chapter_title || E'\n\n' ||
-    'This is an original eAcharya worksheet aligned to the chapter theme, not copied from the textbook.' || E'\n\n' ||
-    '## Short-answer practice' || E'\n\n' || '1. ' || ch.question_one || E'\n2. ' || ch.question_two || E'\n3. Explain one spatial pattern or relationship from this chapter using a labelled sketch, a small table or a reliable example.' || E'\n\n' ||
-    '## Applied activity' || E'\n\n' || ch.activity || E'\n\n' ||
-    '## Answer-writing checklist' || E'\n\n' || 'Define the term, explain the process or relationship, use a specific example, and end with a brief inference. If you use figures, state their source and year.' AS transcript, 15 AS duration_minutes
-  FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position JOIN public.lessons l ON l.unit_id = u.id AND l.position = 1
-)
-INSERT INTO public.lesson_content (lesson_id, objectives, transcript, duration_minutes)
-SELECT lesson_id, objectives, transcript, duration_minutes FROM content_rows
-ON CONFLICT (lesson_id) DO UPDATE SET objectives = EXCLUDED.objectives, transcript = EXCLUDED.transcript, duration_minutes = EXCLUDED.duration_minutes, updated_at = now();
-
 -- Hide legacy placeholder resource cards without deleting records or student bookmarks.
 UPDATE public.resources SET is_published = false, updated_at = now() WHERE title LIKE '[Sample]%' AND is_published = true;
 
--- One official textbook reference and one worksheet resource per chapter.
+-- One official textbook reference per book.
 INSERT INTO public.resources (title, description, resource_type, course_id, topic, external_url, is_published)
 SELECT 'Official NCERT textbook: ' || b.book_name, 'Open the official NCERT textbook page for this book. Check the current edition and applicable annual syllabus.', 'link', c.id, 'NCERT textbook', b.official_url, true
 FROM phase5_books b JOIN public.courses c ON c.slug = b.book_slug
 WHERE NOT EXISTS (SELECT 1 FROM public.resources r WHERE r.course_id = c.id AND r.title = 'Official NCERT textbook: ' || b.book_name AND r.resource_type = 'link');
-
-INSERT INTO public.resources (title, description, resource_type, course_id, unit_id, lesson_id, topic, body, is_published)
-SELECT 'Practice worksheet: ' || ch.chapter_title, 'Original chapter review, short-answer prompts and one applied geographical task.', 'notes', c.id, u.id, l.id, 'Practice worksheet',
-  '# ' || ch.chapter_title || E'\n\n' || 'Original eAcharya practice support; use the current textbook for the complete prescribed chapter.' || E'\n\n' ||
-  '1. ' || ch.question_one || E'\n2. ' || ch.question_two || E'\n3. Explain one pattern or relationship using a labelled diagram, map or table.' || E'\n\n' || 'Applied activity: ' || ch.activity || E'\n\n' || 'Check your answers for accurate terminology, a clear explanation, a relevant example and a source/year wherever data is used.', true
-FROM phase5_chapters ch JOIN public.courses c ON c.slug = ch.book_slug JOIN public.units u ON u.course_id = c.id AND u.position = ch.chapter_position JOIN public.lessons l ON l.unit_id = u.id AND l.position = 1
-WHERE NOT EXISTS (SELECT 1 FROM public.resources r WHERE r.course_id = c.id AND r.unit_id = u.id AND r.title = 'Practice worksheet: ' || ch.chapter_title AND r.resource_type = 'notes');
 
 -- Link the official CIET audio-book catalogue for accessibility. Idempotent by title.
 INSERT INTO public.resources (title, description, resource_type, topic, external_url, is_published)

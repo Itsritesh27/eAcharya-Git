@@ -1,0 +1,35 @@
+Copy these files into your project at the SAME paths (replace existing ones).
+
+DELETE this file from your project:
+  src/app/tutorials/[lessonId]/page (4).tsx      (stale duplicate of the lesson page)
+
+Changed:
+  src/lib/data/learning.ts                 shared per-request queries, cached tutorial tree, cached enrolled-course data
+  src/app/tutorials/[lessonId]/page.tsx    doubts fetched in parallel with lesson data
+  src/lib/assessments/student-data.ts      .limit(200) safety cap
+  src/components/landing/earth-3d.tsx      SVG globe on phones / Data Saver / low-memory devices; lighter sphere
+
+New loading screens (instant skeleton while data loads):
+  src/app/dashboard/loading.tsx
+  src/app/tutorials/loading.tsx
+  src/app/resources/loading.tsx
+  src/app/courses/[slug]/loading.tsx
+
+Then run:  npm run typecheck && npm test && npm run build
+
+Globe temporarily disabled:
+  src/components/landing/hero.tsx   (uses the SVG globe; earth-3d.tsx is kept, just not loaded)
+
+Build fixes (from your build output):
+  tsconfig.json                          excludes netlify/, android/, capacitor.config.ts from type-checking
+  src/lib/live-sessions/livekit.ts       adds the missing createWebhookReceiver() used by the LiveKit webhook route
+  src/components/layout/site-header-actions.tsx   fixes a TypeScript error (cookie name could be undefined)
+
+Timing logs (find the slow step; silent unless PERF_LOG=1 is in .env.local):
+  src/lib/perf.ts                         NEW helper
+  src/lib/auth/session.ts                 times auth check + profile query
+  src/lib/supabase/middleware.ts          times the middleware auth check
+  src/app/dashboard/student/page.tsx      times each dashboard data source
+
+Database (preview-first, NOT auto-run; read the header of the file):
+  supabase/proposed/rls_initplan_helpers_PROPOSAL.sql

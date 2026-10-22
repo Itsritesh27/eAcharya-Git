@@ -1,6 +1,9 @@
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createPublicClient, CURRICULUM_TAG, CURRICULUM_TTL } from "@/lib/supabase/public";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { COURSE_LIST_SELECT, courseCounts, type CourseWithClass } from "@/lib/data/curriculum";
+import { courseCounts, getPublishedCourses, type CourseWithClass } from "@/lib/data/curriculum";
 import { computeCourseProgress, type CourseProgress } from "@/lib/learning/progress";
 import type { LessonContentRow, ResourceRow, ResourceType } from "@/types/app";
 
@@ -17,7 +20,9 @@ export interface EnrolledCourse {
   progress: CourseProgress;
 }
 
-export async function getCompletedLessonIds(userId: string): Promise<Set<string>> {
+// React cache(): pages that call this directly AND through another helper (e.g. the
+// e-Tutorials page + getTutorialTree) now share ONE query per request.
+export const getCompletedLessonIds = cache(async (userId: string): Promise<Set<string>> => {
   if (!isSupabaseConfigured()) return new Set();
   const supabase = await createClient();
   const { data } = await supabase
@@ -26,7 +31,7 @@ export async function getCompletedLessonIds(userId: string): Promise<Set<string>
     .eq("user_id", userId)
     .eq("status", "completed");
   return new Set((data ?? []).map((r) => (r as { lesson_id: string }).lesson_id));
-}
+});
 
 export async function getEnrolledCourses(userId: string): Promise<EnrolledCourse[]> {
   if (!isSupabaseConfigured()) return [];
@@ -40,12 +45,11 @@ export async function getEnrolledCourses(userId: string): Promise<EnrolledCourse
   const ids = (enrol ?? []).map((e) => (e as { course_id: string }).course_id);
   if (ids.length === 0) return [];
 
-  const [{ data: courses }, completed] = await Promise.all([
-    supabase.from("courses").select(COURSE_LIST_SELECT).in("id", ids).eq("status", "published"),
-    getCompletedLessonIds(userId),
-  ]);
+  // The published-course list (with nested unit/lesson ids used for counts) is public data that is
+  // already cached for 120 s, so reuse it instead of re-running the heavy nested query per user.
+  const [published, completed] = await Promise.all([getPublishedCourses(), getCompletedLessonIds(userId)]);
 
-  const byId = new Map(((courses ?? []) as unknown as CourseWithClass[]).map((c) => [c.id, c]));
+  const byId = new Map(published.map((c) => [c.id, c]));
   const result: EnrolledCourse[] = [];
   for (const id of ids) {
     const course = byId.get(id);
@@ -56,12 +60,12 @@ export async function getEnrolledCourses(userId: string): Promise<EnrolledCourse
   return result;
 }
 
-export async function getEnrolledCourseIds(userId: string): Promise<Set<string>> {
+export const getEnrolledCourseIds = cache(async (userId: string): Promise<Set<string>> => {
   if (!isSupabaseConfigured()) return new Set();
   const supabase = await createClient();
   const { data } = await supabase.from("enrollments").select("course_id").eq("user_id", userId);
   return new Set((data ?? []).map((r) => (r as { course_id: string }).course_id));
-}
+});
 
 export interface LessonRef {
   lessonId: string;
@@ -332,34 +336,50 @@ export interface TutorialClassGroup {
   courses: TutorialCourse[];
 }
 
+interface TutorialTreeRow {
+  id: string;
+  title: string;
+  slug: string;
+  class: { grade: number; name: string };
+  units: {
+    id: string;
+    title: string;
+    position: number;
+    lessons: { id: string; title: string; position: number; is_published: boolean }[];
+  }[];
+}
+
+/** Public curriculum tree (same for every student), cached like the other curriculum reads. */
+async function loadTutorialTreeRows(): Promise<TutorialTreeRow[]> {
+  const supabase = createPublicClient();
+  const { data, error } = await supabase
+    .from("courses")
+    .select(
+      "id, title, slug, class:classes!inner(grade, name), units(id, title, position, lessons(id, title, position, is_published))",
+    )
+    .eq("status", "published")
+    .order("title");
+  if (error) throw new Error(`tutorial tree: ${error.message}`); // thrown errors are never cached
+  return (data ?? []) as unknown as TutorialTreeRow[];
+}
+
+const cachedTutorialTreeRows = unstable_cache(loadTutorialTreeRows, ["tutorial-tree"], {
+  tags: [CURRICULUM_TAG],
+  revalidate: CURRICULUM_TTL,
+});
+
 export async function getTutorialTree(userId: string): Promise<TutorialClassGroup[]> {
   if (!isSupabaseConfigured()) return [];
-  const supabase = await createClient();
 
-  const [{ data }, enrolledIds, completed] = await Promise.all([
-    supabase
-      .from("courses")
-      .select(
-        "id, title, slug, class:classes!inner(grade, name), units(id, title, position, lessons(id, title, position, is_published))",
-      )
-      .eq("status", "published")
-      .order("title"),
+  // Only enrollment + progress are per-user; the curriculum itself comes from the shared cache.
+  const [rows, enrolledIds, completed] = await Promise.all([
+    cachedTutorialTreeRows().catch((err) => {
+      console.error("[learning] getTutorialTree failed:", err);
+      return [] as TutorialTreeRow[];
+    }),
     getEnrolledCourseIds(userId),
     getCompletedLessonIds(userId),
   ]);
-
-  const rows = (data ?? []) as unknown as {
-    id: string;
-    title: string;
-    slug: string;
-    class: { grade: number; name: string };
-    units: {
-      id: string;
-      title: string;
-      position: number;
-      lessons: { id: string; title: string; position: number; is_published: boolean }[];
-    }[];
-  }[];
 
   const groups = new Map<number, TutorialClassGroup>();
   for (const c of rows) {

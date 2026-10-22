@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MonitorPlay } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { SectionHeading, Welcome } from "@/components/dashboard/welcome";
+import { AddChapterForm } from "@/components/teacher-videos/add-chapter-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireRole } from "@/lib/auth/session";
 import { getTeacherChapters } from "@/lib/teacher-videos/data";
@@ -16,7 +17,7 @@ export default async function TeacherVideosPage() {
 
   return (
     <DashboardShell session={session}>
-      <Welcome name={session.profile.full_name} subtitle="Pick a chapter, then paste YouTube links to add its videos." />
+      <Welcome name={session.profile.full_name} subtitle="Add a chapter to your course, then open it to upload videos or paste YouTube links." />
 
       {courses.length === 0 ? (
         <EmptyState
@@ -56,6 +57,7 @@ export default async function TeacherVideosPage() {
                 ))}
               </ul>
             )}
+            <AddChapterForm courseId={c.courseId} />
           </section>
         ))
       )}

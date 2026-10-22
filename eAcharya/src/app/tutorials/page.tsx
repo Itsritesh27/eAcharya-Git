@@ -12,7 +12,18 @@ export const dynamic = "force-dynamic";
 
 export default async function TutorialsPage() {
   const session = await requireSession("/tutorials");
-  const [groups, completed] = await Promise.all([getTutorialTree(session.userId), getCompletedLessonIds(session.userId)]);
+  const [allGroups, completed] = await Promise.all([
+    getTutorialTree(session.userId),
+    getCompletedLessonIds(session.userId),
+  ]);
+
+  // Students only see the courses they are enrolled in (and only the classes those belong to).
+  const groups =
+    session.profile.role === "student"
+      ? allGroups
+          .map((g) => ({ ...g, courses: g.courses.filter((c) => c.enrolled) }))
+          .filter((g) => g.courses.length > 0)
+      : allGroups;
 
   return (
     <DashboardShell session={session}>
@@ -26,7 +37,11 @@ export default async function TutorialsPage() {
           <EmptyState
             icon={MonitorPlay}
             title="No tutorials yet"
-            description="Published courses and their lessons will appear here."
+            description={
+              session.profile.role === "student"
+                ? "Enrol in a course from My Courses and its lessons will appear here."
+                : "Published courses and their lessons will appear here."
+            }
           />
         ) : (
           groups.map((g) => (

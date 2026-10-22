@@ -49,10 +49,7 @@ export async function closeRoom(room: string): Promise<void> {
   }
 }
 
-/**
- * Creates a LiveKit webhook receiver using server-only credentials.
- * Returns null when webhook verification is not configured.
- */
+/** Verifies the signature on LiveKit webhook calls. Null when LiveKit is not configured. */
 export function createWebhookReceiver(): WebhookReceiver | null {
   const env = getLiveKitEnv();
   if (!env) return null;
