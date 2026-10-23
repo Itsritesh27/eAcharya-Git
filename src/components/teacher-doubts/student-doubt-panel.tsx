@@ -34,12 +34,15 @@ export function StudentDoubtPanel({
   currentTimeSeconds,
   canUsePlaybackTime,
   initialDoubts,
+  embedded = false,
 }: {
   courseId: string;
   lessonId: string;
   currentTimeSeconds: number;
   canUsePlaybackTime: boolean;
   initialDoubts: StudentLessonDoubt[];
+  /** Render without the outer card chrome (used inside the Ask doubt dialog). */
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -127,7 +130,7 @@ export function StudentDoubtPanel({
   }
 
   return (
-    <section className="mt-6 rounded-card border border-sage-200 bg-white p-5 shadow-card" aria-labelledby="private-doubt-title">
+    <section className={embedded ? "py-4" : "mt-6 rounded-card border border-sage-200 bg-white p-5 shadow-card"} aria-labelledby="private-doubt-title">
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
           <MessageCircleQuestion className="h-5 w-5" aria-hidden />
