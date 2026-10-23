@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
-import { SCHEDULED_LANGUAGES } from "@/lib/multilingual/languages";
+import { ALL_LANGUAGE_CODES, languageByCode } from "@/lib/multilingual/languages";
 
 type SpeechAlternative = { transcript: string };
 type SpeechResult = ArrayLike<SpeechAlternative>;
@@ -82,7 +82,7 @@ export function VoiceQuestionButton({ onTranscript, disabled = false }: { onTran
         {listening ? <MicOff className="h-4 w-4" aria-hidden /> : <Mic className="h-4 w-4" aria-hidden />}
         {listening ? "Stop voice typing" : "Ask by voice"}
       </button>
-      <p className="mt-1 text-xs text-forest-500">{listening ? `Listening in ${SCHEDULED_LANGUAGES.find((item) => item.locale === preferredLocale())?.name ?? "your selected language"}. Your recognised words appear in the editable question box.` : "Uses speech recognition supported by your browser and device; microphone permission is required."}</p>
+      <p className="mt-1 text-xs text-forest-500">{listening ? `Listening in ${languageByCode(preferredLocale().split("-")[0] ?? "hi").name}. Your recognised words appear in the editable question box.` : "Uses speech recognition supported by your browser and device; microphone permission is required."}</p>
       {error && <p role="status" className="mt-1 text-xs font-medium text-red-700">{error}</p>}
     </div>
   );
@@ -94,8 +94,7 @@ function preferredLocale(): string {
     const raw = window.localStorage.getItem("eacharya.languagePreferences");
     if (raw) {
       const preferences = JSON.parse(raw) as { contentLanguage?: string };
-      const language = SCHEDULED_LANGUAGES.find((item) => item.code === preferences.contentLanguage);
-      if (language) return language.locale;
+      if (preferences.contentLanguage && (ALL_LANGUAGE_CODES as readonly string[]).includes(preferences.contentLanguage)) return languageByCode(preferences.contentLanguage).locale;
     }
   } catch { /* invalid or blocked local preference: use Hindi */ }
   return "hi-IN";

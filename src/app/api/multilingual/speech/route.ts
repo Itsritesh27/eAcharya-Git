@@ -7,6 +7,7 @@ import { parseTimedSubtitles, timedSubtitlesPlainText } from "@/lib/multilingual
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const schema = z.object({
   targetLanguage: z.string().refine(isScheduledLanguage),
@@ -76,6 +77,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "AI audio-track generation is not configured yet. Browser voice playback is available as a fallback; set EACHARYA_SPEECH_SERVICE_URL for a self-hosted speech/TTS service." , code: "SPEECH_UNAVAILABLE" }, { status: 503 });
   }
 
+  // A speech model needs far longer than the request limit for a full lesson; fail fast with guidance.
+  if (translatedText.length > 6000) {
+    return NextResponse.json({ error: "This transcript is too long to generate as one audio track. Use the Play button for browser voice playback instead.", code: "AUDIO_TOO_LONG" }, { status: 413 });
+  }
+
   let endpoint: URL;
   try {
     endpoint = new URL(configuredEndpoint);
@@ -92,7 +98,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { "content-type": "application/json", ...(process.env.EACHARYA_SPEECH_SERVICE_TOKEN ? { authorization: `Bearer ${process.env.EACHARYA_SPEECH_SERVICE_TOKEN}` } : {}) },
       cache: "no-store",
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(55000),
       body: JSON.stringify({ text: translatedText, language: targetLanguage, task: "lesson_audio_track", output: "audio_url" }),
     });
     const payload: unknown = await serviceResponse.json().catch(() => null);
@@ -102,7 +108,7 @@ export async function POST(request: Request) {
     }
     let audioUrl: URL;
     try { audioUrl = new URL(audioUrlRaw); } catch { return NextResponse.json({ error: "The speech service returned an invalid audio URL." }, { status: 502 }); }
-    if (audioUrl.protocol !== "https:") return NextResponse.json({ error: "The speech service must return an HTTPS audio URL." }, { status: 502 });
+    if (audioUrl.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(audioUrl.hostname)) return NextResponse.json({ error: "The speech service must return an HTTPS audio URL." }, { status: 502 });
 
     const insertPayload = {
       lesson_id: lessonId ?? null,
@@ -129,6 +135,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertError?.code === "42P01" || insertError?.code === "PGRST205" ? "Apply the multilingual Supabase migration before saving audio assets." : "Audio was generated but its reusable asset record could not be saved." }, { status: 500 });
   } catch (error) {
     const timeout = error instanceof Error && error.name === "TimeoutError";
-    return NextResponse.json({ error: timeout ? "Audio generation took too long. Please try again." : "The speech service could not be reached. Check its URL and availability." }, { status: 502 });
+    return NextResponse.json({ error: timeout ? "Audio generation took too long. Use the Play button for instant browser voice playback instead." : "The speech service could not be reached. Check its URL and availability." }, { status: 502 });
   }
 }

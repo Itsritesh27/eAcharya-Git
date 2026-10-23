@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { isScheduledLanguage } from "@/lib/multilingual/languages";
+import { isScheduledLanguage, languageByCode } from "@/lib/multilingual/languages";
+import { supportedTranslationCodes } from "@/lib/multilingual/translation-server";
 import { parseTimedSubtitles, timedSubtitlesPlainText, timedSubtitlesToVtt, type SubtitleCue } from "@/lib/multilingual/subtitles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const requestSchema = z.object({
   targetLanguage: z.string().refine(isScheduledLanguage),
@@ -15,6 +17,8 @@ const requestSchema = z.object({
   // PDF text may be supplied after the student extracts/selects it. For published resource
   // content the resource ID is still verified with RLS before any generated output is cached.
   sourceText: z.string().trim().min(1).max(30000).optional(),
+  // Chunked mode: the browser asks for one small part at a time so no single request runs long.
+  part: z.number().int().min(0).max(500).optional(),
 }).refine((value) => Boolean(value.lessonId || value.resourceId || value.sourceText), {
   message: "Select lesson content, a resource, or provide text to translate.",
 });
@@ -80,18 +84,28 @@ export async function POST(request: Request) {
     }
   }
 
+  const azureKey = process.env.AZURE_TRANSLATOR_KEY?.trim();
+  const azureRegion = process.env.AZURE_TRANSLATOR_REGION?.trim();
   const endpoint = process.env.LIBRETRANSLATE_URL?.trim();
-  if (!endpoint) {
+  if (!azureKey && !endpoint) {
     return NextResponse.json({
-      error: "Translation is not configured yet. Set LIBRETRANSLATE_URL to a trusted LibreTranslate-compatible endpoint (preferably a self-hosted instance).",
+      error: "Translation is not configured yet. Set AZURE_TRANSLATOR_KEY (recommended) or LIBRETRANSLATE_URL to a trusted LibreTranslate-compatible endpoint (preferably a self-hosted instance).",
       code: "TRANSLATION_UNAVAILABLE",
       targetLanguage,
     }, { status: 503 });
   }
 
-  let translateUrl: URL;
-  try {
-    translateUrl = new URL(endpoint);
+  const { codes: supportedCodes, source: supportSource } = await supportedTranslationCodes();
+  if (supportSource === "server" && !supportedCodes.includes(targetLanguage)) {
+    return NextResponse.json({
+      error: `${languageByCode(targetLanguage).name} is not supported by the translation service. Please choose another language.`,
+      code: "LANGUAGE_UNSUPPORTED",
+    }, { status: 422 });
+  }
+
+  let translateUrl: URL = new URL("http://unused.invalid");
+  if (!azureKey) try {
+    translateUrl = new URL(endpoint!);
     if (translateUrl.protocol !== "https:" && translateUrl.hostname !== "localhost" && translateUrl.hostname !== "127.0.0.1") {
       return NextResponse.json({ error: "LIBRETRANSLATE_URL must use HTTPS except for local development." }, { status: 500 });
     }
@@ -104,12 +118,19 @@ export async function POST(request: Request) {
 
   try {
     const translateText = async (text: string): Promise<string> => {
+      try { return await translateOnce(text); } catch (error) {
+        // One retry for a slow/overloaded service; a rejected language pair fails immediately.
+        if (error instanceof Error && error.name === "TimeoutError") return translateOnce(text);
+        throw error;
+      }
+    };
+    const translateOnce = async (text: string): Promise<string> => {
       const apiKey = process.env.LIBRETRANSLATE_API_KEY?.trim();
       const translateResponse = await fetch(translateUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         cache: "no-store",
-        signal: AbortSignal.timeout(90000),
+        signal: AbortSignal.timeout(Number(process.env.TRANSLATION_TIMEOUT_MS) || 30000),
         body: JSON.stringify({
           q: text,
           source: "auto",
@@ -131,24 +152,100 @@ export async function POST(request: Request) {
       return translated;
     };
 
+    // Azure Translator takes many texts per request, so a whole lesson is a handful of fast calls.
+    const azureBatch = async (texts: string[]): Promise<string[]> => {
+      const res = await fetch(`https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${encodeURIComponent(targetLanguage)}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "Ocp-Apim-Subscription-Key": azureKey!,
+          ...(azureRegion ? { "Ocp-Apim-Subscription-Region": azureRegion } : {}),
+        },
+        cache: "no-store",
+        signal: AbortSignal.timeout(25000),
+        body: JSON.stringify(texts.map((Text) => ({ Text }))),
+      });
+      const payload: unknown = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(payload) || payload.length !== texts.length) {
+        const message = payload && typeof payload === "object" && "error" in payload ? String((payload as { error?: { message?: unknown } }).error?.message ?? "") : "";
+        throw new Error(message || "The translation service rejected this language or text.");
+      }
+      return payload.map((item: { translations?: { text?: string }[] }, i) => item?.translations?.[0]?.text || texts[i]!);
+    };
+    const translateMany = async (texts: string[]): Promise<string[]> => {
+      if (azureKey) {
+        const groups: string[][] = [];
+        for (let i = 0; i < texts.length; i += 25) groups.push(texts.slice(i, i + 25));
+        return (await Promise.all(groups.map(azureBatch))).flat();
+      }
+      // Send several texts per request; the server translates them together in one pass.
+      const perRequest = Number(process.env.TRANSLATION_BATCH_ITEMS) || 8;
+      const groups: string[][] = [];
+      for (let i = 0; i < texts.length; i += perRequest) groups.push(texts.slice(i, i + perRequest));
+      const outGroups: string[][] = new Array(groups.length);
+      let nextGroup = 0;
+      await Promise.all(Array.from({ length: Math.min(2, groups.length) }, async () => {
+        while (nextGroup < groups.length) { const g = nextGroup++; outGroups[g] = await libreBatch(groups[g]!); }
+      }));
+      return outGroups.flat();
+    };
+    const libreBatch = async (texts: string[]): Promise<string[]> => {
+      const once = async (): Promise<string[]> => {
+        const apiKey = process.env.LIBRETRANSLATE_API_KEY?.trim();
+        const res = await fetch(translateUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+          signal: AbortSignal.timeout(Number(process.env.TRANSLATION_TIMEOUT_MS) || 30000),
+          body: JSON.stringify({ q: texts, source: "auto", target: targetLanguage, format: "text", ...(apiKey ? { api_key: apiKey } : {}) }),
+        });
+        const payload: unknown = await res.json().catch(() => null);
+        const t = payload && typeof payload === "object" && "translatedText" in payload ? (payload as { translatedText?: unknown }).translatedText : null;
+        const list = Array.isArray(t) ? t : typeof t === "string" && texts.length === 1 ? [t] : null;
+        if (!res.ok || !list || list.length !== texts.length || list.some((x) => typeof x !== "string")) {
+          const msg = payload && typeof payload === "object" && "error" in payload && typeof (payload as { error?: unknown }).error === "string" ? (payload as { error: string }).error : "The translation service rejected this language pair or text.";
+          throw new Error(payload ? msg : `${msg} (HTTP ${res.status} from the translation server; check its logs)`);
+        }
+        return list as string[];
+      };
+      try { return await once(); } catch (error) {
+        if (error instanceof Error && error.name === "TimeoutError") return once();
+        throw error;
+      }
+    };
+
+    // Chunked mode: translate only one small part and let the browser ask for the next one.
+    if (parsed.data.part !== undefined) {
+      const part = parsed.data.part;
+      let units: string[];
+      let perPart: number;
+      if (contentType === "subtitles") {
+        const timed = parseTimedSubtitles(sourceText);
+        if (!timed) return NextResponse.json({ error: "The saved subtitle file is not valid WebVTT/SRT text." }, { status: 422 });
+        units = timed.cues.map((cue) => cue.text.join("\n"));
+        perPart = Number(process.env.TRANSLATION_CUES_PER_PART) || 4;
+      } else {
+        units = splitForTranslation(sourceText, Number(process.env.TRANSLATION_CHUNK_CHARS) || 400);
+        perPart = Number(process.env.TRANSLATION_PIECES_PER_PART) || 6;
+      }
+      const totalParts = Math.max(1, Math.ceil(units.length / perPart));
+      if (part >= totalParts) return NextResponse.json({ error: "That part does not exist." }, { status: 400 });
+      const translations = await translateMany(units.slice(part * perPart, (part + 1) * perPart));
+      return NextResponse.json({ part, totalParts, translations, timedSubtitles: contentType === "subtitles", targetLanguage });
+    }
+
     let translatedText: string;
     if (contentType === "subtitles") {
       const parsedSubtitles = parseTimedSubtitles(sourceText);
       if (!parsedSubtitles) return NextResponse.json({ error: "The saved subtitle file is not valid WebVTT/SRT text." }, { status: 422 });
       if (parsedSubtitles.cues.length > 60) return NextResponse.json({ error: "This caption file has more than 60 cues. Split the caption file into shorter sections to preserve cue timings reliably." }, { status: 413 });
-      const translatedCues: SubtitleCue[] = [];
-      // Small batches prevent a single large request from altering timestamp metadata.
-      for (let start = 0; start < parsedSubtitles.cues.length; start += 6) {
-        const batch = parsedSubtitles.cues.slice(start, start + 6);
-        const translations = await Promise.all(batch.map((cue) => translateText(cue.text.join("\n"))));
-        batch.forEach((cue, index) => translatedCues.push({ prefix: cue.prefix, text: [translations[index] ?? cue.text.join("\n")] }));
-      }
+      const translations = await translateMany(parsedSubtitles.cues.map((cue) => cue.text.join("\n")));
+      const translatedCues: SubtitleCue[] = parsedSubtitles.cues.map((cue, index) => ({ prefix: cue.prefix, text: [translations[index] ?? cue.text.join("\n")] }));
       translatedText = timedSubtitlesToVtt({ header: parsedSubtitles.header, cues: translatedCues });
     } else {
       // Long transcripts are translated in small pieces so no single request times out.
-      const pieces = splitForTranslation(sourceText, 1200);
-      const results: string[] = [];
-      for (const piece of pieces) results.push(await translateText(piece));
+      const pieces = splitForTranslation(sourceText, Number(process.env.TRANSLATION_CHUNK_CHARS) || 800);
+      const results = await translateMany(pieces);
       translatedText = results.join("\n\n");
     }
 
@@ -182,7 +279,8 @@ export async function POST(request: Request) {
     return translationResponse(translatedText, contentType, false, reviewStatus, targetLanguage);
   } catch (error) {
     const timeout = error instanceof Error && error.name === "TimeoutError";
-    const message = error instanceof Error ? error.message : "The translation service could not be reached.";
+    let message = error instanceof Error ? error.message : "The translation service could not be reached.";
+    if (message === "fetch failed") message = `Cannot reach the translation server at ${azureKey ? "Azure" : translateUrl.origin}. Make sure it is running (try 127.0.0.1 instead of localhost in LIBRETRANSLATE_URL).`;
     return NextResponse.json({
       error: timeout ? "The translation service took too long. Please try again." : `Translation unavailable for this language or content: ${message}`,
       code: "LANGUAGE_UNAVAILABLE",

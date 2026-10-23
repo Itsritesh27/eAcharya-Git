@@ -5,7 +5,8 @@ import { Check, Languages, Loader2 } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { saveLanguagePreferencesAction } from "@/lib/multilingual/actions";
-import { DEFAULT_LANGUAGE_PREFERENCES, SCHEDULED_LANGUAGES, type LanguagePreferences } from "@/lib/multilingual/languages";
+import { DEFAULT_LANGUAGE_PREFERENCES, type LanguagePreferences } from "@/lib/multilingual/languages";
+import { useSupportedLanguages } from "@/components/multilingual/use-supported-languages";
 
 export function LanguagePreferencesForm({ initialValue = DEFAULT_LANGUAGE_PREFERENCES }: { initialValue?: LanguagePreferences }) {
   const [value, setValue] = useState<LanguagePreferences>(initialValue);
@@ -53,17 +54,18 @@ export function LanguagePreferencesForm({ initialValue = DEFAULT_LANGUAGE_PREFER
         {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
         Save preferences
       </Button>
-      <p className="text-xs leading-relaxed text-forest-500">eAcharya lists India&apos;s 22 Scheduled Languages as target preferences; a specific translation or voice model may not support every language yet. Unavailable features will be labelled rather than silently replaced.</p>
+      <p className="text-xs leading-relaxed text-forest-500">Only languages the translation service can currently translate into are listed.</p>
     </div>
   );
 }
 
 function LanguageSelect({ id, label, value, onChange, disabled }: { id: string; label: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
+  const languages = useSupportedLanguages();
   return (
     <label htmlFor={id} className="block text-sm font-semibold text-forest-800">
       {label}
       <select id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-sage-300 bg-white px-3 text-sm font-normal text-forest-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100">
-        {SCHEDULED_LANGUAGES.map((language) => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
+        {languages.map((language) => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
       </select>
     </label>
   );

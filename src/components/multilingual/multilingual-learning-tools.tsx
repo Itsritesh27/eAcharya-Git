@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioLines, Captions, Languages, Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
-import { SCHEDULED_LANGUAGES, languageByCode, type ScheduledLanguageCode } from "@/lib/multilingual/languages";
+import { SPOKEN_AUDIO_CODES, languageByCode, type ScheduledLanguageCode } from "@/lib/multilingual/languages";
+import { useSupportedLanguages } from "@/components/multilingual/use-supported-languages";
 import { parseTimedSubtitles, timedSubtitlesPlainText, timedSubtitlesToVtt } from "@/lib/multilingual/subtitles";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
 type SourceKind = "lesson" | "resource";
 type TranslationResponse = { translatedText: string; translatedVtt?: string; timedSubtitles?: boolean; cached: boolean; reviewStatus: string; targetLanguage: string };
+type PartResponse = Partial<TranslationResponse> & { error?: string; part?: number; totalParts?: number; translations?: string[] };
 type AudioResponse = { audioUrl: string; cached: boolean; reviewStatus: string; targetLanguage: string };
 
 export function MultilingualLearningTools({
@@ -34,6 +36,10 @@ export function MultilingualLearningTools({
   hasTranscript?: boolean;
   onSubtitleTrackUrl?: (url: string | null, targetLanguage: string) => void;
 }) {
+  const supportedLanguages = useSupportedLanguages();
+  // Spoken audio needs a translation and a voice. The server voice covers these, so no phone voice is required.
+  const audioLanguages = supportedLanguages.filter((l) => (SPOKEN_AUDIO_CODES as readonly string[]).includes(l.code));
+  const playerRef = useRef<{ audio: HTMLAudioElement | null; cancelled: boolean; urls: string[] }>({ audio: null, cancelled: false, urls: [] });
   const [targetLanguage, setTargetLanguage] = useState<ScheduledLanguageCode>(initialLanguage);
   const [audioLanguage, setAudioLanguage] = useState<ScheduledLanguageCode>(initialAudioLanguage);
   const [audioTranslation, setAudioTranslation] = useState<{ language: ScheduledLanguageCode; text: string } | null>(null);
@@ -42,6 +48,7 @@ export function MultilingualLearningTools({
   const [audioAsset, setAudioAsset] = useState<AudioResponse | null>(null);
   const [pastedText, setPastedText] = useState(sourceText);
   const [busyTranslate, setBusyTranslate] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [busyAudio, setBusyAudio] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<"original" | "translated">("original");
@@ -52,6 +59,18 @@ export function MultilingualLearningTools({
   const subtitleCallback = useRef(onSubtitleTrackUrl);
   useEffect(() => { subtitleCallback.current = onSubtitleTrackUrl; }, [onSubtitleTrackUrl]);
 
+  // If a saved preference is not translatable by the configured service, move to the first one that is.
+  useEffect(() => {
+    const first = supportedLanguages[0]?.code;
+    if (!first) return;
+    if (!supportedLanguages.some((l) => l.code === targetLanguage)) setTargetLanguage(first);
+  }, [supportedLanguages, targetLanguage]);
+
+  useEffect(() => {
+    const first = audioLanguages[0]?.code;
+    if (first && !audioLanguages.some((l) => l.code === audioLanguage)) setAudioLanguage(first);
+  }, [audioLanguages, audioLanguage]);
+
   const needsPdfText = sourceKind === "resource" && resourceType === "pdf" && !sourceText.trim();
   const canTranslate = sourceKind === "lesson" ? hasTranscript : resourceType !== "pdf" || Boolean(pastedText.trim());
   const sourceIsLong = (sourceKind === "lesson" ? sourceText : (resourceType === "pdf" ? pastedText : sourceText)).length > 30000;
@@ -60,7 +79,7 @@ export function MultilingualLearningTools({
   const hasTranslation = translatedText.trim().length > 0;
 
   useEffect(() => () => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    stopSpeaking();
     if (subtitleObjectUrl.current) URL.revokeObjectURL(subtitleObjectUrl.current);
     if (originalSubtitleObjectUrl.current) URL.revokeObjectURL(originalSubtitleObjectUrl.current);
     subtitleCallback.current?.(null, targetLanguage);
@@ -112,6 +131,56 @@ export function MultilingualLearningTools({
     return `eacharya.translation.${identity}.${targetLanguage}`;
   }, [lessonId, resourceId, targetLanguage, title]);
 
+  const sourceForParts = sourceKind === "resource" && resourceType === "pdf" ? pastedText : sourceText;
+
+  /** Asks the server for one small part. Retries once if the translation server was slow. */
+  async function requestPart(language: ScheduledLanguageCode, part: number): Promise<PartResponse> {
+    let last = "Translation is unavailable for this language or content.";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch("/api/multilingual/translate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          targetLanguage: language,
+          part,
+          ...(lessonId ? { lessonId } : {}),
+          ...(resourceId ? { resourceId } : {}),
+          ...(sourceKind === "resource" && resourceType === "pdf" ? { sourceText: pastedText } : {}),
+        }),
+      });
+      const payload = await readJson<PartResponse>(response);
+      if (response.ok) return payload;
+      last = payload.error || last;
+      const slow = response.status === 502 || response.status === 504 || response.status === 408 || /too long/i.test(last);
+      if (!slow) break;
+    }
+    throw new Error(last);
+  }
+
+  /** Translates in small parts, one request each, so no single request can time out. */
+  async function translateAll(language: ScheduledLanguageCode, onProgress?: (done: number, total: number) => void): Promise<TranslationResponse> {
+    const units: string[] = [];
+    let total = 1;
+    let timed = false;
+    for (let part = 0; part < total; part++) {
+      const payload = await requestPart(language, part);
+      // A saved translation comes back whole, in a single response.
+      if (payload.totalParts === undefined && typeof payload.translatedText === "string") return payload as TranslationResponse;
+      if (!Array.isArray(payload.translations) || typeof payload.totalParts !== "number") throw new Error("Translation returned an unexpected response. Please try again.");
+      total = payload.totalParts;
+      timed = Boolean(payload.timedSubtitles);
+      units.push(...payload.translations);
+      onProgress?.(part + 1, total);
+    }
+    if (timed) {
+      const parsed = parseTimedSubtitles(sourceForParts);
+      if (!parsed || parsed.cues.length !== units.length) throw new Error("The captions changed while translating. Please try again.");
+      const vtt = timedSubtitlesToVtt({ header: parsed.header, cues: parsed.cues.map((cue, i) => ({ prefix: cue.prefix, text: [units[i] ?? cue.text.join("\n")] })) });
+      return { translatedText: timedSubtitlesPlainText(vtt), translatedVtt: vtt, timedSubtitles: true, cached: false, reviewStatus: "not-cached", targetLanguage: language };
+    }
+    return { translatedText: units.join("\n\n"), timedSubtitles: false, cached: false, reviewStatus: "not-cached", targetLanguage: language };
+  }
+
   async function translate() {
     setError(null);
     if (!canTranslate) {
@@ -123,8 +192,9 @@ export function MultilingualLearningTools({
       return;
     }
     setBusyTranslate(true);
+    setProgress(null);
     try {
-      const cached = readLocalTranslation(cacheKey, sourceKind === "resource" && resourceType === "pdf" ? pastedText : sourceText);
+      const cached = readLocalTranslation(cacheKey, sourceForParts);
       if (cached) {
         setTranslatedText(cached.translatedText);
         setTranslationInfo({ cached: true, reviewStatus: cached.reviewStatus || "local" });
@@ -132,18 +202,7 @@ export function MultilingualLearningTools({
         setView("translated");
         return;
       }
-      const response = await fetch("/api/multilingual/translate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          targetLanguage,
-          ...(lessonId ? { lessonId } : {}),
-          ...(resourceId ? { resourceId } : {}),
-          ...(sourceKind === "resource" && resourceType === "pdf" ? { sourceText: pastedText } : {}),
-        }),
-      });
-      const payload = await response.json() as Partial<TranslationResponse> & { error?: string };
-      if (!response.ok || typeof payload.translatedText !== "string") throw new Error(payload.error || "Translation is unavailable for this language or content.");
+      const payload = await translateAll(targetLanguage, (done, total) => setProgress({ done, total }));
       setTranslatedText(payload.translatedText);
       setTranslationInfo({ cached: Boolean(payload.cached), reviewStatus: payload.reviewStatus || "unknown" });
       if (payload.timedSubtitles && typeof payload.translatedVtt === "string") attachSubtitleTrack(payload.translatedVtt, targetLanguage);
@@ -155,36 +214,27 @@ export function MultilingualLearningTools({
       setView("translated");
       try {
         window.localStorage.setItem(cacheKey, JSON.stringify({
-          sourceText: sourceKind === "resource" && resourceType === "pdf" ? pastedText : sourceText,
+          sourceText: sourceForParts,
           translatedText: payload.translatedText,
           translatedVtt: payload.translatedVtt,
           reviewStatus: payload.reviewStatus || "unknown",
         }));
-      } catch { /* local cache is optional; the server-side asset cache remains authoritative */ }
+      } catch { /* local cache is optional */ }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Translation failed. Please try again.");
     } finally {
       setBusyTranslate(false);
+      setProgress(null);
     }
   }
 
   async function ensureAudioTranslation(language: ScheduledLanguageCode): Promise<string> {
     if (language === targetLanguage && translatedText.trim()) return translatedText;
     if (audioTranslation?.language === language && audioTranslation.text.trim()) return audioTranslation.text;
-    const response = await fetch("/api/multilingual/translate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        targetLanguage: language,
-        ...(lessonId ? { lessonId } : {}),
-        ...(resourceId ? { resourceId } : {}),
-        ...(sourceKind === "resource" && resourceType === "pdf" ? { sourceText: pastedText } : {}),
-      }),
-    });
-    const payload = await response.json() as Partial<TranslationResponse> & { error?: string };
-    if (!response.ok || typeof payload.translatedText !== "string") throw new Error(payload.error || `Translation is not available in ${languageByCode(language).name}.`);
-    setAudioTranslation({ language, text: payload.translatedText });
-    return payload.translatedText;
+    const result = await translateAll(language, (done, total) => setProgress({ done, total }));
+    setProgress(null);
+    setAudioTranslation({ language, text: result.translatedText });
+    return result.translatedText;
   }
 
   async function generateAudioTrack() {
@@ -207,7 +257,7 @@ export function MultilingualLearningTools({
           ...(sourceKind === "resource" && resourceType === "pdf" ? { sourceText: pastedText } : {}),
         }),
       });
-      const payload = await response.json() as Partial<AudioResponse> & { error?: string };
+      const payload = await readJson<Partial<AudioResponse> & { error?: string }>(response);
       if (!response.ok || typeof payload.audioUrl !== "string") throw new Error(payload.error || `Audio track generation is unavailable for ${currentAudioLanguage.name}.`);
       setAudioAsset(payload as AudioResponse);
     } catch (caught) {
@@ -226,39 +276,89 @@ export function MultilingualLearningTools({
 
   async function speakTranslation() {
     setError(null);
-    if (!("speechSynthesis" in window)) {
-      setError("Browser speech playback is not supported on this device. Try a generated audio track if one is available.");
-      return;
-    }
+    stopSpeaking();
     try {
       const translatedContent = await ensureAudioTranslation(audioLanguage);
-      const text = parseTimedSubtitles(translatedContent)
-        ? timedSubtitlesPlainText(translatedContent)
-        : translatedContent;
-      window.speechSynthesis.cancel();
-      const voice = window.speechSynthesis.getVoices().find((item) => item.lang.toLowerCase().startsWith(currentAudioLanguage.locale.slice(0, 2).toLowerCase()));
-      if (!voice) {
-        setError(`This device does not have a ${currentAudioLanguage.name} speech voice installed. Choose another language, or configure the AI speech service for a generated track.`);
-        return;
-      }
+      const text = parseTimedSubtitles(translatedContent) ? timedSubtitlesPlainText(translatedContent) : translatedContent;
       const chunks = splitForSpeech(text);
       if (chunks.length === 0) return;
+      const player = playerRef.current;
+      player.cancelled = false;
       setIsSpeaking(true);
-      chunks.forEach((chunk, index) => {
-        const utterance = new SpeechSynthesisUtterance(chunk);
-        utterance.lang = currentAudioLanguage.locale;
-        utterance.voice = voice;
-        utterance.rate = Number(speed);
-        utterance.onend = () => { if (index === chunks.length - 1) setIsSpeaking(false); };
-        utterance.onerror = () => { setIsSpeaking(false); setError("Browser voice playback stopped unexpectedly."); };
-        window.speechSynthesis.speak(utterance);
-      });
+
+      // Prefer the device's own voice when it has one; otherwise use the server voice.
+      const deviceVoice = typeof window !== "undefined" && "speechSynthesis" in window
+        ? window.speechSynthesis.getVoices().find((item) => item.lang.toLowerCase().split(/[-_]/)[0] === audioLanguage)
+        : undefined;
+      if (deviceVoice) {
+        chunks.forEach((chunk, index) => {
+          const utterance = new SpeechSynthesisUtterance(chunk);
+          utterance.lang = currentAudioLanguage.locale;
+          utterance.voice = deviceVoice;
+          utterance.rate = Number(speed);
+          utterance.onend = () => { if (index === chunks.length - 1) setIsSpeaking(false); };
+          utterance.onerror = () => { setIsSpeaking(false); };
+          window.speechSynthesis.speak(utterance);
+        });
+        return;
+      }
+
+      // Server voice: fetch each short chunk as MP3 and play them in order, fetching the next while one plays.
+      const fetchChunk = async (chunk: string): Promise<string> => {
+        const response = await fetch("/api/multilingual/tts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ language: audioLanguage, text: chunk }),
+        });
+        if (!response.ok) {
+          const failure = await readJson<{ error?: string }>(response.clone());
+          throw new Error(failure.error || "The voice service could not speak this language.");
+        }
+        const url = URL.createObjectURL(await response.blob());
+        player.urls.push(url);
+        return url;
+      };
+      const serverChunks = splitForSpeech(text, 170);
+      let pending = fetchChunk(serverChunks[0]!);
+      for (let i = 0; i < serverChunks.length; i++) {
+        const url = await pending;
+        if (player.cancelled) return;
+        pending = i + 1 < serverChunks.length ? fetchChunk(serverChunks[i + 1]!) : Promise.resolve("");
+        pending.catch(() => undefined);
+        await new Promise<void>((resolve, reject) => {
+          const audio = new Audio(url);
+          audio.playbackRate = Number(speed);
+          player.audio = audio;
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("Audio playback failed on this device."));
+          audio.play().catch(reject);
+        });
+        if (player.cancelled) return;
+      }
+      setIsSpeaking(false);
     } catch (caught) {
+      setIsSpeaking(false);
       setError(caught instanceof Error ? caught.message : "Could not prepare translated speech. Please try again.");
     }
   }
 
+  function pauseSpeaking() {
+    playerRef.current.audio?.pause();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.pause();
+  }
+
+  function resumeSpeaking() {
+    void playerRef.current.audio?.play();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.resume();
+  }
+
   function stopSpeaking() {
+    const player = playerRef.current;
+    player.cancelled = true;
+    player.audio?.pause();
+    player.audio = null;
+    player.urls.forEach((url) => URL.revokeObjectURL(url));
+    player.urls = [];
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
     setIsSpeaking(false);
   }
@@ -277,12 +377,12 @@ export function MultilingualLearningTools({
         <label className="block text-sm font-semibold text-forest-800" htmlFor={`language-target-${lessonId ?? resourceId ?? "free"}`}>
           Target language
           <select id={`language-target-${lessonId ?? resourceId ?? "free"}`} value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value as ScheduledLanguageCode)} className="mt-1.5 h-11 w-full rounded-xl border border-sage-300 bg-white px-3 text-sm font-normal text-forest-900">
-            {SCHEDULED_LANGUAGES.map((language) => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
+            {supportedLanguages.map((language) => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
           </select>
         </label>
         <Button type="button" onClick={translate} disabled={busyTranslate || !canTranslate || sourceIsLong}>
           {busyTranslate ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Languages className="h-4 w-4" aria-hidden />}
-          {busyTranslate ? "Translating…" : "Translate"}
+          {busyTranslate ? (progress ? `Translating ${progress.done}/${progress.total}…` : "Translating…") : "Translate"}
         </Button>
       </div>
 
@@ -327,8 +427,8 @@ export function MultilingualLearningTools({
               </select>
             </label>
             <Button type="button" variant="secondary" onClick={speakTranslation}><Play className="h-4 w-4" aria-hidden /> Play</Button>
-            <Button type="button" variant="secondary" onClick={() => { if ("speechSynthesis" in window) { window.speechSynthesis.pause(); setIsSpeaking(true); } }} disabled={!isSpeaking}><Pause className="h-4 w-4" aria-hidden /> Pause</Button>
-            <Button type="button" variant="secondary" onClick={() => { if ("speechSynthesis" in window) { window.speechSynthesis.resume(); setIsSpeaking(true); } }}><RotateCcw className="h-4 w-4" aria-hidden /> Resume</Button>
+            <Button type="button" variant="secondary" onClick={pauseSpeaking} disabled={!isSpeaking}><Pause className="h-4 w-4" aria-hidden /> Pause</Button>
+            <Button type="button" variant="secondary" onClick={resumeSpeaking}><RotateCcw className="h-4 w-4" aria-hidden /> Resume</Button>
             <Button type="button" variant="secondary" onClick={stopSpeaking}><Square className="h-4 w-4" aria-hidden /> Stop</Button>
           </div>
           <div className="mt-4 rounded-xl border border-sage-200 p-3">
@@ -344,8 +444,8 @@ export function MultilingualLearningTools({
             </div>
             <label className="mt-3 block max-w-sm text-sm font-semibold text-forest-800" htmlFor={`audio-language-${lessonId ?? resourceId ?? "free"}`}>
               Preferred spoken language
-              <select id={`audio-language-${lessonId ?? resourceId ?? "free"}`} value={audioLanguage} onChange={(event) => { if ("speechSynthesis" in window) window.speechSynthesis.cancel(); setAudioLanguage(event.target.value as ScheduledLanguageCode); setAudioAsset(null); setAudioTranslation(null); setIsSpeaking(false); }} className="mt-1.5 h-11 w-full rounded-xl border border-sage-300 bg-white px-3 text-sm font-normal text-forest-900">
-                {SCHEDULED_LANGUAGES.map((language) => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
+              <select id={`audio-language-${lessonId ?? resourceId ?? "free"}`} value={audioLanguage} onChange={(event) => { stopSpeaking(); setAudioLanguage(event.target.value as ScheduledLanguageCode); setAudioAsset(null); setAudioTranslation(null); setIsSpeaking(false); }} className="mt-1.5 h-11 w-full rounded-xl border border-sage-300 bg-white px-3 text-sm font-normal text-forest-900">
+                {audioLanguages.map((language) => <option key={language.code} value={language.code}>{language.name} · {language.nativeName}</option>)}
               </select>
             </label>
             {audioAsset && <div className="mt-3"><audio controls preload="none" src={audioAsset.audioUrl} className="w-full" /><p className="mt-1 text-xs text-forest-500">{languageByCode(audioAsset.targetLanguage).name} audio track · {audioAsset.cached ? "reused" : "generated"}{audioAsset.reviewStatus === "pending" ? " · Pending teacher review" : audioAsset.reviewStatus === "approved" ? " · Teacher approved" : ""}</p></div>}
@@ -356,14 +456,23 @@ export function MultilingualLearningTools({
   );
 }
 
-function splitForSpeech(text: string): string[] {
+/** Parses a JSON response; a gateway timeout or HTML error page becomes a readable message instead of a parse error. */
+async function readJson<T extends { error?: string }>(response: Response): Promise<T> {
+  const text = await response.text();
+  try { return JSON.parse(text) as T; } catch {
+    const timedOut = response.status === 502 || response.status === 504 || response.status === 408;
+    return { error: timedOut ? "The translation service took too long. Please try again, or try a shorter lesson transcript." : `The server returned an unexpected response (${response.status}). Please try again.` } as T;
+  }
+}
+
+function splitForSpeech(text: string, max = 220): string[] {
   const sentences = text.replace(/\s+/g, " ").match(/[^.!?。！？]+[.!?。！？]?/g) ?? [text];
   const chunks: string[] = [];
   for (const sentence of sentences) {
     const value = sentence.trim();
     if (!value) continue;
-    if (value.length <= 220) { chunks.push(value); continue; }
-    for (let start = 0; start < value.length; start += 220) chunks.push(value.slice(start, start + 220));
+    if (value.length <= max) { chunks.push(value); continue; }
+    for (let start = 0; start < value.length; start += max) chunks.push(value.slice(start, start + max));
   }
   return chunks;
 }

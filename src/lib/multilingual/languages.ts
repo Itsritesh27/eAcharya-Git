@@ -27,16 +27,26 @@ const ALL_SCHEDULED_LANGUAGES = [
 export type ScheduledLanguageCode = (typeof ALL_SCHEDULED_LANGUAGES)[number]["code"];
 
 /**
- * Languages the configured translation server can actually translate into.
- * Stock LibreTranslate (with en/hi/bn/ur loaded) supports only these. When you add a
- * translation service that supports more languages, add their codes here.
+ * Languages we show when the translation server's own language list cannot be read.
+ * This is all 22 languages, because the local IndicTrans2 model translates all of them. The authoritative list is the
+ * server's /languages endpoint (see /api/multilingual/languages), which the UI uses
+ * to hide any language the configured service cannot actually translate into.
  * No database change is needed: the database already allows all 22 codes.
  */
-const ENABLED_LANGUAGE_CODES: readonly ScheduledLanguageCode[] = ["hi", "bn", "ur"];
+export const FALLBACK_TRANSLATION_CODES: readonly ScheduledLanguageCode[] = [
+  "as", "bn", "brx", "doi", "gu", "hi", "kn", "ks", "kok", "mai", "ml",
+  "mni", "mr", "ne", "or", "pa", "sa", "sat", "sd", "ta", "te", "ur",
+];
 
-export const SCHEDULED_LANGUAGES = ALL_SCHEDULED_LANGUAGES.filter((language) =>
-  ENABLED_LANGUAGE_CODES.includes(language.code),
-);
+export type ScheduledLanguage = (typeof ALL_SCHEDULED_LANGUAGES)[number];
+
+/** Scheduled languages restricted to the given supported codes (defaults to the fallback set). */
+export function languagesFor(codes: readonly string[] = FALLBACK_TRANSLATION_CODES): ScheduledLanguage[] {
+  return ALL_SCHEDULED_LANGUAGES.filter((language) => codes.includes(language.code));
+}
+
+/** Backwards-compatible static list (fallback set). Prefer the useSupportedLanguages() hook in UI. */
+export const SCHEDULED_LANGUAGES = languagesFor();
 export type LanguagePreferences = {
   contentLanguage: ScheduledLanguageCode;
   subtitleLanguage: ScheduledLanguageCode;
@@ -50,7 +60,7 @@ export const DEFAULT_LANGUAGE_PREFERENCES: LanguagePreferences = {
 };
 
 export function isScheduledLanguage(value: unknown): value is ScheduledLanguageCode {
-  return typeof value === "string" && SCHEDULED_LANGUAGES.some((language) => language.code === value);
+  return typeof value === "string" && ALL_SCHEDULED_LANGUAGES.some((language) => language.code === value);
 }
 
 export function languageByCode(code: string) {
@@ -58,3 +68,9 @@ export function languageByCode(code: string) {
   return ALL_SCHEDULED_LANGUAGES.find((language) => language.code === code)
     ?? ALL_SCHEDULED_LANGUAGES.find((language) => language.code === "hi")!;
 }
+export const ALL_LANGUAGE_CODES: readonly ScheduledLanguageCode[] = ALL_SCHEDULED_LANGUAGES.map((language) => language.code);
+
+/** Languages the server-side voice route can speak (Azure neural voices, or Google fallback). */
+export const SPOKEN_AUDIO_CODES: readonly ScheduledLanguageCode[] = [
+  "bn", "gu", "hi", "kn", "ml", "mr", "ne", "pa", "ta", "te", "ur",
+];
