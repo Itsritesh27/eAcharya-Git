@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AudioLines, Captions, Languages, Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
+import { AudioLines, Captions, ChevronDown, Languages, Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { SPOKEN_AUDIO_CODES, languageByCode, type ScheduledLanguageCode } from "@/lib/multilingual/languages";
 import { useSupportedLanguages } from "@/components/multilingual/use-supported-languages";
 import { parseTimedSubtitles, timedSubtitlesPlainText, timedSubtitlesToVtt } from "@/lib/multilingual/subtitles";
@@ -54,6 +54,7 @@ export function MultilingualLearningTools({
   const [view, setView] = useState<"original" | "translated">("original");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speed, setSpeed] = useState("1");
+  const [open, setOpen] = useState(false);
   const subtitleObjectUrl = useRef<string | null>(null);
   const originalSubtitleObjectUrl = useRef<string | null>(null);
   const subtitleCallback = useRef(onSubtitleTrackUrl);
@@ -363,8 +364,20 @@ export function MultilingualLearningTools({
     setIsSpeaking(false);
   }
 
+  const idKey = lessonId ?? resourceId ?? "free";
   return (
-    <section className="mt-5 rounded-card border border-sage-200 bg-white p-4 shadow-card sm:p-5" aria-labelledby={`multilingual-title-${lessonId ?? resourceId ?? "free"}`}>
+    <div className="mt-5">
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={`multilingual-panel-${idKey}`}
+      onClick={() => setOpen((value) => !value)}
+      className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${open ? "border-brand-600 bg-brand-50 text-brand-800" : "border-sage-300 bg-white text-forest-700 hover:bg-sage-50"}`}
+    >
+      <Languages className="h-4 w-4" aria-hidden />Learn in your language
+      <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+    </button>
+    <section id={`multilingual-panel-${idKey}`} hidden={!open} className="mt-3 rounded-card border border-sage-200 bg-white p-4 shadow-card sm:p-5" aria-labelledby={`multilingual-title-${idKey}`}>
       <div className="flex items-start gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700"><Languages className="h-5 w-5" aria-hidden /></span>
         <div className="min-w-0 flex-1">
@@ -453,6 +466,7 @@ export function MultilingualLearningTools({
         </div>
       )}
     </section>
+    </div>
   );
 }
 
