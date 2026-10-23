@@ -1,8 +1,5 @@
 import { ButtonLink } from "@/components/ui/button";
-// TEMPORARILY DISABLED: 3D globe. To turn it back on, restore the Earth3D import below and swap the
-// <GlobeIllustration /> in the hero for <Earth3D />.
-// import { Earth3D } from "./earth-3d";
-import { GlobeIllustration } from "./globe-illustration";
+import { Earth3D } from "./earth-3d";
 
 export function Hero() {
   return (
@@ -48,7 +45,7 @@ export function Hero() {
         </div>
 
         <div className="relative mx-auto w-full max-w-md lg:max-w-none">
-          <GlobeIllustration className="relative mx-auto h-auto w-full max-w-[460px] lg:max-w-[520px]" />
+          <Earth3D className="relative mx-auto h-auto w-full max-w-[460px] lg:max-w-[520px]" />
         </div>
       </div>
     </section>
