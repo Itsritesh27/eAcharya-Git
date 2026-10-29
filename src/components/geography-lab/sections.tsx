@@ -27,10 +27,11 @@ export function LabHero() {
             Classes 9 to 12.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <ButtonLink href="#activities" size="lg">
-              Browse activities <ArrowRight className="h-4 w-4" aria-hidden />
+            <ButtonLink href="/geography-lab/geo-detective" size="lg">
+              <Compass className="h-4 w-4" aria-hidden /> Play Geo Detective <ArrowRight className="h-4 w-4" aria-hidden />
             </ButtonLink>
-            <ButtonLink href="#tools" variant="secondary" size="lg">See lab tools</ButtonLink>
+            <ButtonLink href="#activities" variant="secondary" size="lg">Browse activities</ButtonLink>
+            <ButtonLink href="#tools" variant="ghost" size="lg">See lab tools</ButtonLink>
           </div>
         </div>
         <GlobeIllustration className="mx-auto h-auto w-full max-w-xs sm:max-w-sm" />

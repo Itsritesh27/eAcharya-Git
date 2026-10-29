@@ -6,6 +6,10 @@
   # so Netlify's secret scanner flags them falsely. Real secrets (LIVEKIT_API_SECRET etc.)
   # remain scanned.
   [build.environment]
+<<<<<<< Updated upstream
+=======
+    NODE_VERSION = "22.22.0"
+>>>>>>> Stashed changes
     SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SITE_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,TRANSLATION_TIMEOUT_MS,TRANSLATION_CHUNK_CHARS,TRANSLATION_PIECES_PER_PART,LIVEKIT_URL"
 
 [[plugins]]

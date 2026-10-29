@@ -2,6 +2,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { createPublicClient, CURRICULUM_TAG, CURRICULUM_TTL } from "@/lib/supabase/public";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { timed } from "@/lib/perf";
 import type { ClassRow, CourseRow, LessonRow, UnitRow } from "@/types/app";
 
 /**
@@ -144,7 +145,7 @@ const cachedCourseBySlug = unstable_cache(loadPublishedCourseBySlug, ["published
 export const getPublishedCourseBySlug = cache(async (slug: string): Promise<CourseDetail | null> => {
   if (!isSupabaseConfigured()) return null;
   try {
-    return await cachedCourseBySlug(slug);
+    return await timed("curriculum: published course by slug", () => cachedCourseBySlug(slug));
   } catch (err) {
     console.error("[curriculum] getPublishedCourseBySlug failed:", err);
     return null;

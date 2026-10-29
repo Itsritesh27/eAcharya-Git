@@ -21,12 +21,11 @@ export function EconLabHero() {
             income and summarise data, with tools matched to Classes 9 to 12.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <ButtonLink href="#tools" size="lg">
-              See lab tools <ArrowRight className="h-4 w-4" aria-hidden />
+            <ButtonLink href="/economics-lab/market-master" size="lg">
+              <TrendingUp className="h-4 w-4" aria-hidden /> Play Market Master <ArrowRight className="h-4 w-4" aria-hidden />
             </ButtonLink>
-            <ButtonLink href="/courses?subject=economics" variant="secondary" size="lg">
-              Economics courses
-            </ButtonLink>
+            <ButtonLink href="#tools" variant="secondary" size="lg">See lab tools</ButtonLink>
+            <ButtonLink href="/courses?subject=economics" variant="ghost" size="lg">Economics courses</ButtonLink>
           </div>
         </div>
         <svg viewBox="0 0 320 240" role="img" aria-label="Demand and supply curves crossing at the equilibrium point" className="mx-auto h-auto w-full max-w-xs sm:max-w-sm">

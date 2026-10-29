@@ -15,6 +15,7 @@ import { getViewer } from "@/lib/auth/session";
 import { getPublishedCourseBySlug } from "@/lib/data/curriculum";
 import { getCompletedLessonIds, getEnrolledCourseIds } from "@/lib/data/learning";
 import { computeCourseProgress } from "@/lib/learning/progress";
+import { timed } from "@/lib/perf";
 
 type Params = Promise<{ slug: string }>;
 
@@ -37,26 +38,36 @@ export default async function CourseDetailPage({ params }: { params: Params }) {
   const viewer = await getViewer();
   const isStudent = viewer?.role === "student";
 
-  const [enrolledIds, completed] = viewer
-    ? await Promise.all([getEnrolledCourseIds(viewer.userId), getCompletedLessonIds(viewer.userId)])
-    : [new Set<string>(), new Set<string>()];
+  type CourseResource = {
+    id: string;
+    title: string;
+    resource_type: keyof typeof RESOURCE_TYPE_INFO;
+    unit_id: string | null;
+  };
+
+  // These reads do not depend on one another once the course is known. Start them
+  // together so a signed-in visit doesn't wait for progress queries before loading resources.
+  const [enrolledIds, completed, resourceRows] = await Promise.all([
+    viewer ? timed("course page: enrolled IDs", () => getEnrolledCourseIds(viewer.userId)) : Promise.resolve(new Set<string>()),
+    viewer ? timed("course page: completed lessons", () => getCompletedLessonIds(viewer.userId)) : Promise.resolve(new Set<string>()),
+    (async (): Promise<CourseResource[]> => {
+      if (!viewer) return [];
+      return timed("course page: published resources", async () => {
+        const supabase = await createClient();
+        const { data } = await supabase
+          .from("resources")
+          .select("id, title, resource_type, unit_id")
+          .eq("course_id", course.id)
+          .eq("is_published", true)
+          .order("title");
+        return (data ?? []) as CourseResource[];
+      });
+    })(),
+  ]);
   const enrolled = enrolledIds.has(course.id);
 
   const lessonIds = units.flatMap((u) => u.lessons.map((l) => l.id));
   const progress = computeCourseProgress(lessonIds, completed);
-
-  // Resources attached to this course's chapters (RLS: signed-in users see published ones).
-  let resourceRows: { id: string; title: string; resource_type: keyof typeof RESOURCE_TYPE_INFO; unit_id: string | null }[] = [];
-  if (viewer) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("resources")
-      .select("id, title, resource_type, unit_id")
-      .eq("course_id", course.id)
-      .eq("is_published", true)
-      .order("title");
-    resourceRows = (data ?? []) as typeof resourceRows;
-  }
   const chapters: Chapter[] = units.map((u) => ({
     id: u.id,
     title: u.title,

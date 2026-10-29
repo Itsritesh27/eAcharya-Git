@@ -125,7 +125,7 @@ export function MultilingualLearningTools({
       subtitleObjectUrl.current = null;
     }
     subtitleCallback.current?.(null, targetLanguage);
-  }, [pastedText]);
+  }, [pastedText, targetLanguage]);
 
   const cacheKey = useMemo(() => {
     const identity = lessonId ? `lesson:${lessonId}` : resourceId ? `resource:${resourceId}` : title;

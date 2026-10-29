@@ -117,41 +117,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const translateText = async (text: string): Promise<string> => {
-      try { return await translateOnce(text); } catch (error) {
-        // One retry for a slow/overloaded service; a rejected language pair fails immediately.
-        if (error instanceof Error && error.name === "TimeoutError") return translateOnce(text);
-        throw error;
-      }
-    };
-    const translateOnce = async (text: string): Promise<string> => {
-      const apiKey = process.env.LIBRETRANSLATE_API_KEY?.trim();
-      const translateResponse = await fetch(translateUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        cache: "no-store",
-        signal: AbortSignal.timeout(Number(process.env.TRANSLATION_TIMEOUT_MS) || 30000),
-        body: JSON.stringify({
-          q: text,
-          source: "auto",
-          target: targetLanguage,
-          format: "text",
-          ...(apiKey ? { api_key: apiKey } : {}),
-        }),
-      });
-      const payload: unknown = await translateResponse.json().catch(() => null);
-      const translated = payload && typeof payload === "object" && "translatedText" in payload
-        ? (payload as { translatedText?: unknown }).translatedText
-        : null;
-      if (!translateResponse.ok || typeof translated !== "string" || !translated.trim()) {
-        const providerMessage = payload && typeof payload === "object" && "error" in payload && typeof (payload as { error?: unknown }).error === "string"
-          ? (payload as { error: string }).error
-          : "The translation service rejected this language pair or text.";
-        throw new Error(providerMessage);
-      }
-      return translated;
-    };
-
     // Azure Translator takes many texts per request, so a whole lesson is a handful of fast calls.
     const azureBatch = async (texts: string[]): Promise<string[]> => {
       const res = await fetch(`https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${encodeURIComponent(targetLanguage)}`, {

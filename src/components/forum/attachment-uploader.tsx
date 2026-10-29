@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { Paperclip, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
 const MAX_BYTES = 10 * 1024 * 1024;

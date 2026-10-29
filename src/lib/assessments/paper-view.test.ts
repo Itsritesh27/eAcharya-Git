@@ -9,7 +9,7 @@ import { ATTEMPT_GENERIC_ERROR, type AttemptInfo } from "./attempts";
 /*
  * MOCKED verification of the Phase C4 integration. The two server actions are replaced by in-memory fakes, so
  * these tests prove the page's decision flow and that nothing restricted reaches the view. They do NOT prove
- * the database, RLS, PostgREST or a rendered browser page (see BUILD_STATUS.md, Phase C4).
+ * the database, RLS, PostgREST or a rendered browser page (see docs/PERFORMANCE.md).
  */
 
 const ASM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

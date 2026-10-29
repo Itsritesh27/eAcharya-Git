@@ -1,5 +1,9 @@
 import { ButtonLink } from "@/components/ui/button";
+<<<<<<< Updated upstream
 import { Earth3D } from "./earth-3d";
+=======
+import { DeferredEarth3D } from "./earth-3d-deferred";
+>>>>>>> Stashed changes
 
 export function Hero() {
   return (
@@ -45,7 +49,11 @@ export function Hero() {
         </div>
 
         <div className="relative mx-auto w-full max-w-md lg:max-w-none">
+<<<<<<< Updated upstream
           <Earth3D className="relative mx-auto h-auto w-full max-w-[460px] lg:max-w-[520px]" />
+=======
+          <DeferredEarth3D className="relative mx-auto h-auto w-full max-w-[460px] lg:max-w-[520px]" />
+>>>>>>> Stashed changes
         </div>
       </div>
     </section>

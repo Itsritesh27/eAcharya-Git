@@ -1,28 +1,29 @@
-# dependencies
+# Dependencies
 node_modules/
 
-# build output
+# Build output and generated caches
 .next/
 out/
 build/
+coverage/
 *.tsbuildinfo
 next-env.d.ts
 
-# secrets and local environment (never commit real credentials)
+# Secrets and local environment files (never commit real credentials)
 .env
 .env.local
 .env.*.local
 .env.production
 *.pem
 
-# logs and misc
+# Logs and operating-system files
 npm-debug.log*
 .DS_Store
-.vercel
-coverage/
+.vercel/
+
+# Supabase local state
 supabase/.temp/
 supabase/.branches/
 
-# local machine files
+# Android local machine properties
 android/local.properties
-*.tsbuildinfo

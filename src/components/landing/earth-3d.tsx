@@ -45,14 +45,8 @@ export function Earth3D({ className }: { className?: string }) {
           return;
         }
 
-        // Let the page become interactive first; the globe is decorative, so
-        // its ~600 KB of three.js must not compete with content for the main thread.
-        await new Promise<void>((resolve) => {
-          const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
-          if (w.requestIdleCallback) w.requestIdleCallback(() => resolve(), { timeout: 2500 });
-          else setTimeout(resolve, 800);
-        });
-        if (disposed) return;
+        // The homepage wrapper imports this component only near the viewport
+        // during an idle window. Avoid a second idle delay here before loading Three.js.
         const THREE = await import("three");
         if (disposed) return;
 
